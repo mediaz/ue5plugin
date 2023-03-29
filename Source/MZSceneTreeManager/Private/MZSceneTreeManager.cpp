@@ -100,6 +100,8 @@ void FMZSceneTreeManager::StartupModule()
 
 	MZPropertyManager.MZClient = MZClient;
 
+	SceneTree.MZPropertyManager = &MZPropertyManager;
+
 	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateRaw(this, &FMZSceneTreeManager::Tick));
 	MZActorManager = new FMZActorManager(SceneTree);
 	//Bind to MediaZ events
@@ -403,26 +405,13 @@ void FMZSceneTreeManager::OnMZConnectionClosed()
 void FMZSceneTreeManager::OnMZPinValueChanged(mz::fb::UUID const& pinId, uint8_t const* data, size_t size)
 {
 	FGuid Id = *(FGuid*)&pinId;
-	if (CustomProperties.Contains(Id))
-	{
-		auto mzprop = CustomProperties.FindRef(Id);
-		std::vector<uint8_t> copy(size, 0);
-		memcpy(copy.data(), data, size);
-
-		mzprop->SetPropValue((void*)copy.data(), size);
-		return;
-	}
 	SetPropertyValue(Id, (void*)data, size);
 }
 
 void FMZSceneTreeManager::OnMZPinShowAsChanged(mz::fb::UUID const& Id, mz::fb::ShowAs newShowAs)
 {
 	FGuid pinId = *(FGuid*)&Id;
-	if (CustomProperties.Contains(pinId))
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Custom Property ShowAs changed."));
-	}
-	else if (MZPropertyManager.PropertiesById.Contains(pinId) && !MZPropertyManager.PropertyToPortalPin.Contains(pinId))
+	if (MZPropertyManager.PinToPropertyCache.Contains(pinId) && !MZPropertyManager.PropertyToPortalPin.Contains(pinId))
 	{
 		MZPropertyManager.CreatePortal(pinId, newShowAs);
 	}
@@ -431,15 +420,9 @@ void FMZSceneTreeManager::OnMZPinShowAsChanged(mz::fb::UUID const& Id, mz::fb::S
 		UE_LOG(LogTemp, Warning, TEXT("Property with given id is not found."));
 	}
 
-	if(MZPropertyManager.PortalPinsById.Contains(pinId))
-	{
-		auto Portal = MZPropertyManager.PortalPinsById.FindRef(pinId);
-		if(MZPropertyManager.PropertiesById.Contains(Portal.SourceId))
-		{
-			auto MzProperty = MZPropertyManager.PropertiesById.FindRef(Portal.SourceId);
-			MZTextureShareManager::GetInstance()->UpdatePinShowAs(MzProperty.Get(), newShowAs);
-		}
-	}
+	if(auto Portal = MZPropertyManager.PortalPinsById.Find(pinId))
+		if(auto MzProperty = MZPropertyManager.PinToPropertyCache.Find(Portal->SourceId))
+			MZTextureShareManager::GetInstance()->UpdatePinShowAs(*MzProperty, newShowAs);
 }
 
 void FMZSceneTreeManager::OnMZFunctionCalled(mz::fb::UUID const& nodeId, mz::fb::Node const& function)
@@ -471,10 +454,9 @@ void FMZSceneTreeManager::OnMZFunctionCalled(mz::fb::UUID const& nodeId, mz::fb:
 
 		for (auto [id, val] : properties)
 		{
-			if (MZPropertyManager.PropertiesById.Contains(id))
+			if (auto mzprop = MZPropertyManager.PinToPropertyCache.Find(id))
 			{
-				auto mzprop = MZPropertyManager.PropertiesById.FindRef(id);
-				mzprop->SetPropValue((void*)val.data(), val.size(), Parms);
+				(*mzprop)->SetPropertyValue(val);
 			}
 		}
 
@@ -482,7 +464,7 @@ void FMZSceneTreeManager::OnMZFunctionCalled(mz::fb::UUID const& nodeId, mz::fb:
 		
 		for (auto mzprop : mzfunc->OutProperties)
 		{
-			SendPinValueChanged(mzprop->Id, mzprop->UpdatePinValue(Parms));
+			SendPinValueChanged(mzprop->Id, mzprop->GetPropertyValue());
 		}
 		mzfunc->Parameters = nullptr;
 		LOG("Unreal Engine function executed.");
@@ -499,24 +481,17 @@ void FMZSceneTreeManager::OnMZExecutedApp(mz::app::AppExecute const& appExecute)
 	{
 		auto id = *(FGuid*)update->pin_id()->bytes()->Data();
 
-		if (MZPropertyManager.PropertiesById.Contains(id))
+		if (auto mzprop = MZPropertyManager.PinToPropertyCache.Find(id))
 		{
-			auto mzprop = MZPropertyManager.PropertiesById.FindRef(id);
-			mzprop->SetPropValue((void*)update->value()->data(), update->value()->size());
-			if(mzprop->TypeName == "mz.fb.Texture")
+			(*mzprop)->SetPropertyValue(std::span(update->value()->data(), update->value()->size()));
+			if((*mzprop)->TypeName == "mz.fb.Texture")
 			{
 				auto texman = MZTextureShareManager::GetInstance();
-				auto ShowAs = mzprop->PinShowAs;
-				if(MZPropertyManager.PropertyToPortalPin.Contains(mzprop->Id))
-				{
-					auto PortalId = MZPropertyManager.PropertyToPortalPin.FindRef(mzprop->Id); 
-					if(MZPropertyManager.PortalPinsById.Contains(PortalId))
-					{
-						auto Portal = MZPropertyManager.PortalPinsById.FindRef(PortalId);
-						ShowAs = Portal.ShowAs;
-					}
-				}
-				texman->UpdateTexturePin(mzprop.Get(), ShowAs, (void*)update->value()->data(), update->value()->size());
+				auto ShowAs = (*mzprop)->PinShowAs;
+				if(auto* PortalId = MZPropertyManager.PropertyToPortalPin.Find((*mzprop)->Id))
+					if(auto* Portal = MZPropertyManager.PortalPinsById.Find(*PortalId))
+						ShowAs = Portal->ShowAs;
+				texman->UpdateTexturePin(*mzprop, ShowAs, (void*)update->value()->data(), update->value()->size());
 				
 			}
 		}
@@ -574,7 +549,7 @@ void FMZSceneTreeManager::OnMZContextMenuCommandFired(mz::ContextMenuAction cons
 	{
 		if (auto actorNode = SceneTree.NodeMap.FindRef(itemId)->GetAsActorNode())
 		{
-			auto actor = actorNode->actor.Get();
+			auto* actor = actorNode->ActorRef.GetAsActor();
 			if (!actor)
 			{
 				return;
@@ -1024,7 +999,7 @@ void FMZSceneTreeManager::OnMZNodeImported(mz::fb::Node const& appNode)
 				
 				MZPortal NewPortal{update.pinId ,MzProperty->Id};
 				NewPortal.DisplayName = FString("");
-				UObject* parent = MzProperty->GetRawObjectContainer();
+				UObject* parent = MzProperty->Container->GetAsUObject();
 				while (parent)
 				{
 					NewPortal.DisplayName = parent->GetFName().ToString() + FString(".") + NewPortal.DisplayName;
@@ -1069,7 +1044,7 @@ void FMZSceneTreeManager::SetPropertyValue(FGuid pinId, void* newval, size_t siz
 
 	
 	bool isChangedBefore = mzprop->IsChanged;
-	mzprop->SetPropValue((void*)copy.data(), size);
+	mzprop->SetPropertyValue((void*)copy.data(), size);
 	if (!isChangedBefore && mzprop->IsChanged && !MZPropertyManager.PropertyToPortalPin.Contains(pinId))
 	{
 		MZPropertyManager.CreatePortal(pinId, mz::fb::ShowAs::PROPERTY);
@@ -1127,9 +1102,9 @@ void FMZSceneTreeManager::RescanScene(bool reset)
 				continue;
 			}
 			AActor* parent = ActorItr->GetSceneOutlinerParent();
-
 			if (parent)
 			{
+				//TODO remove this, find or add already checks if it contains the parent
 				if (SceneTree.ChildMap.Contains(parent->GetActorGuid()))
 				{
 					SceneTree.ChildMap.Find(parent->GetActorGuid())->Add(*ActorItr);
@@ -1145,7 +1120,7 @@ void FMZSceneTreeManager::RescanScene(bool reset)
 			auto newNode = SceneTree.AddActor(ActorItr->GetFolder().GetPath().ToString(), *ActorItr);
 			if (newNode)
 			{
-				newNode->actor = MZActorReference(*ActorItr);
+				newNode->ActorRef = MZActorRef(*ActorItr);
 			}
 		}
 		ConnectViewportTexture();
@@ -1153,15 +1128,6 @@ void FMZSceneTreeManager::RescanScene(bool reset)
 	LOG("SceneTree is constructed.");
 }
 
-bool PropertyVisible(FProperty* ueproperty)
-{
-	return !ueproperty->HasAllPropertyFlags(CPF_DisableEditOnInstance) &&
-		!ueproperty->HasAllPropertyFlags(CPF_Deprecated) &&
-		//!ueproperty->HasAllPropertyFlags(CPF_EditorOnly) && //? dont know what this flag does but it hides more than necessary
-		ueproperty->HasAllPropertyFlags(CPF_Edit) &&
-		//ueproperty->HasAllPropertyFlags(CPF_BlueprintVisible) && //? dont know what this flag does but it hides more than necessary
-		ueproperty->HasAllFlags(RF_Public);
-}
 
 bool FMZSceneTreeManager::PopulateNode(FGuid nodeId)
 {
@@ -2406,10 +2372,6 @@ TSharedPtr<MZProperty> FMZPropertyManager::CreateProperty(UObject* container, FP
 	return MzProperty;
 }
 
-void FMZPropertyManager::SetPropertyValue()
-{
-}
-
 void FMZPropertyManager::ActorDeleted(FGuid DeletedActorId)
 {
 }
@@ -2418,6 +2380,10 @@ flatbuffers::Offset<mz::fb::Pin> FMZPropertyManager::SerializePortal(flatbuffers
 {
 	auto SerializedMetadata = SourceProperty->SerializeMetaData(fbb);
 	return mz::fb::CreatePinDirect(fbb, (mz::fb::UUID*)&Portal.Id, TCHAR_TO_UTF8(*Portal.DisplayName), TCHAR_TO_UTF8(*Portal.TypeName), Portal.ShowAs, mz::fb::CanShowAs::INPUT_OUTPUT_PROPERTY, TCHAR_TO_UTF8(*Portal.CategoryName), SourceProperty->SerializeVisualizer(fbb), 0, 0, 0, 0, 0, 0, 0, 0, false, &SerializedMetadata, 0, mz::fb::PinContents::PortalPin, mz::fb::CreatePortalPin(fbb, (mz::fb::UUID*)&Portal.SourceId).Union());
+}
+
+void FMZPropertyManager::DeleteFProperty(MZFProperty* property)
+{
 }
 
 void FMZPropertyManager::Reset(bool ResetPortals)

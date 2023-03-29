@@ -14,7 +14,7 @@ void MemoryBarrier();
 #include <shared_mutex>
 #include "MediaZ/MediaZ.h"
 
-#include "MZActorProperties.h"
+#include "MZContainer.h"
 #include "MediaZ/AppInterface.h" 
 #include <mzFlatBuffersCommon.h>
 #include "MZClient.h"

@@ -1,4 +1,4 @@
-#include "MZActorProperties.h"
+/*#include "MZActorProperties.h"
 #include "MZTextureShareManager.h"
 #include "EditorCategoryUtils.h"
 #include "ObjectEditorUtils.h"
@@ -1201,3 +1201,4 @@ bool MZComponentReference::UpdateActualComponentPointer()
 }
 
 
+*/

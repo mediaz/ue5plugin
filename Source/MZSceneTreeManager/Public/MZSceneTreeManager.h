@@ -10,46 +10,6 @@
 
 DECLARE_LOG_CATEGORY_EXTERN(LogMZSceneTreeManager, Log, All);
 
-struct MZPortal
-{
-	FGuid Id;
-	FGuid SourceId;
-
-	FString DisplayName;
-	FString TypeName;
-	FString CategoryName;
-	mz::fb::ShowAs ShowAs;
-};
-//This class holds the list of all properties and pins 
-class FMZPropertyManager
-{
-public:
-	FMZPropertyManager();
-
-	TSharedPtr<MZProperty> CreateProperty(UObject* container,
-		FProperty* uproperty,
-		FString parentCategory = FString(""));
-
-	void SetPropertyValue();
-	void CreatePortal(FGuid PropertyId, mz::fb::ShowAs ShowAs);
-	void CreatePortal(FProperty* uproperty, UObject* Container, mz::fb::ShowAs ShowAs);
-	void ActorDeleted(FGuid DeletedActorId);
-	flatbuffers::Offset<mz::fb::Pin> SerializePortal(flatbuffers::FlatBufferBuilder& fbb, MZPortal Portal, MZProperty* SourceProperty);
-	
-	FMZClient* MZClient;
-
-	TMap<FGuid, TSharedPtr<MZProperty>> customProperties;
-	TMap<FGuid, FGuid> PropertyToPortalPin;
-	TMap<FGuid, MZPortal> PortalPinsById;
-	TMap<FGuid, TSharedPtr<MZProperty>> PropertiesById;
-	TMap<FProperty*, TSharedPtr<MZProperty>> PropertiesByPointer;
-	TMap<FGuid, TSet<FGuid>> ActorsPropertyIds; //actor guid x actor mzproperties guid
-
-	TMap<TPair<FProperty*, void*>, TSharedPtr<MZProperty>> PropertiesByPropertyAndContainer;
-	void Reset(bool ResetPortals = true);
-	 
-};
-
 class FMZActorManager
 {
 public:
@@ -62,7 +22,7 @@ public:
 
 	AActor* GetParentTransformActor();
 	AActor* SpawnActor(FString SpawnTag);
-	AActor* SpawnUMGRenderManager(FString umgTag,UUserWidget* widget);
+	AActor* SpawnUMGRenderManager(FString umgTag, UUserWidget* widget);
 	AActor* SpawnActor(UClass* ClassToSpawn);
 	void ClearActors();
 	
@@ -72,14 +32,14 @@ public:
 	void PreSave(uint32 SaveFlags, UWorld* World);
 	void PostSave(uint32 SaveFlags, UWorld* World, bool bSuccess);
 
-	MZActorReference ParentTransformActor;
+	MZActorRef ParentTransformActor;
 
 	MZSceneTree& SceneTree;
 	class FMZAssetManager* MZAssetManager;
 	class FMZClient* MZClient;
 	
 	TSet<FGuid> ActorIds;
-	TArray< TPair<MZActorReference,TMap<FString,FString>> > Actors;
+	TArray< TPair<MZActorRef,TMap<FString,FString>> > Actors;
 };
 
 
@@ -243,9 +203,6 @@ public:
 	//in/out pins of the mediaz node
 	TMap<FGuid, TSharedPtr<MZProperty>> Pins;
 
-	//custom properties like viewport texture
-	TMap<FGuid, TSharedPtr<MZProperty>> CustomProperties;
-
 	MZProperty* ViewportTextureProperty;
 
 	//custom functions like spawn actor
@@ -267,6 +224,6 @@ public:
 	
 	FMZActorManager* MZActorManager;
 
-	FMZPropertyManager MZPropertyManager;
+	FMZPropertyManager MZPropertyManger;
 };
 

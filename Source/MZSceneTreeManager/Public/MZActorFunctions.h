@@ -1,5 +1,5 @@
 #pragma once
-#include "MZActorProperties.h"
+#include "MZContainer.h"
 
 struct MZSCENETREEMANAGER_API MZFunction
 {
@@ -12,8 +12,8 @@ struct MZSCENETREEMANAGER_API MZFunction
 	FString CategoryName;
 	FGuid Id;
 	uint8* Parameters = nullptr;
-	std::vector<TSharedPtr<MZProperty>> Properties;
-	std::vector<TSharedPtr<MZProperty>> OutProperties;
+	std::vector<TUniquePtr<MZProperty>> Properties;
+	std::vector<MZProperty*> OutProperties;
 
 	flatbuffers::Offset<mz::fb::Node> Serialize(flatbuffers::FlatBufferBuilder& fbb);
 

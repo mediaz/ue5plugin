@@ -6,7 +6,7 @@
 #include "AppEvents_generated.h"
 #include "RealityTrack.h"
 #include "MZClient.h"
-
+/*
 class MZStructProperty;
 
 class MZSCENETREEMANAGER_API MZActorReference
@@ -509,3 +509,4 @@ public:
 		uint8* StructPtr = nullptr, 
 		MZStructProperty* ParentProperty = nullptr);
 };
+*/
