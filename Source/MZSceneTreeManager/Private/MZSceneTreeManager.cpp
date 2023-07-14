@@ -90,6 +90,18 @@ void FMZSceneTreeManager::AddCustomFunction(MZCustomFunction* CustomFunction)
 
 void FMZSceneTreeManager::OnBeginFrame()
 {
+	if(ToggleExecutionState)
+	{
+		ToggleExecutionState = false;
+		ExecutionState = ExecutionState == mz::app::ExecutionState::IDLE ? mz::app::ExecutionState::SYNCED : mz::app::ExecutionState::IDLE;
+		bool SemaphoresRenewed = false;
+		MZTextureShareManager::GetInstance()->ExecutionStateChanged(ExecutionState, SemaphoresRenewed);
+		if(SemaphoresRenewed)
+		{
+			SendSyncSemaphores(false);
+		}
+	}
+	
 	MZPropertyManager.OnBeginFrame();
 	MZTextureShareManager::GetInstance()->OnBeginFrame();
 }
@@ -240,8 +252,8 @@ void FMZSceneTreeManager::OnMZConnected(mz::fb::Node const& appNode)
 		LOG("Node import request recieved on connection");
 		OnMZNodeImported(appNode);
 	}
-	else
-		SendSyncSemaphores(true);
+	//else
+		//SendSyncSemaphores(true);
 }
 
 void FMZSceneTreeManager::OnMZNodeUpdated(mz::fb::Node const& appNode)
@@ -251,7 +263,7 @@ void FMZSceneTreeManager::OnMZNodeUpdated(mz::fb::Node const& appNode)
 		SceneTree.Root->Id = *(FGuid*)appNode.id();
 		RescanScene();
 		SendNodeUpdate(FMZClient::NodeId);
-		SendSyncSemaphores(true);
+		//SendSyncSemaphores(true);
 	}
 	auto texman = MZTextureShareManager::GetInstance();
 	for (auto& [id, pin] : ParsePins(&appNode))
@@ -522,13 +534,9 @@ void FMZSceneTreeManager::OnMZNodeRemoved()
 
 void FMZSceneTreeManager::OnMZStateChanged(mz::app::ExecutionState newState)
 {
-	ExecutionState = newState;
-	bool SemaphoresRenewed = false;
-	MZTextureShareManager::GetInstance()->ExecutionStateChanged(newState, SemaphoresRenewed);
-
-	if(SemaphoresRenewed)
+	if(ExecutionState != newState)
 	{
-		SendSyncSemaphores(false);
+		ToggleExecutionState = true; 
 	}
 }
 
@@ -1020,7 +1028,7 @@ void FMZSceneTreeManager::OnMZNodeImported(mz::fb::Node const& appNode)
 			MZClient->AppServiceClient->Send(*root4);
 		}
 	}
-	SendSyncSemaphores(true);
+	//SendSyncSemaphores(true);
 	LOG("Node from MediaZ successfully imported");
 }
 

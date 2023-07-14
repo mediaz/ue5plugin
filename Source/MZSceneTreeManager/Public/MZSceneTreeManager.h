@@ -294,5 +294,7 @@ public:
 	bool bIsModuleFunctional = false;
 
 	mz::app::ExecutionState ExecutionState = mz::app::ExecutionState::IDLE;
+
+	bool ToggleExecutionState = false;
 };
 
