@@ -162,6 +162,7 @@ public:
 
 	//Task queue
 	TQueue<Task, EQueueMode::Mpsc> TaskQueue;
+	TQueue<mz::app::TAppExecute, EQueueMode::Mpsc> ExecuteQueue;
 
 	//Custom time step implementation for mediaZ controlling the unreal editor in play mode
 	UPROPERTY()

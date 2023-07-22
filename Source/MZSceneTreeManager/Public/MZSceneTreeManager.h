@@ -53,7 +53,7 @@ public:
 	TMap<TPair<FProperty*, void*>, TSharedPtr<MZProperty>> PropertiesByPropertyAndContainer;
 	void Reset(bool ResetPortals = true);
 
-	void OnBeginFrame();
+	void OnBeginFrame(bool bSynced);
 	void OnEndFrame();
 };
 

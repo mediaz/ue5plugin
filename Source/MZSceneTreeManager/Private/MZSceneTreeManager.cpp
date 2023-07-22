@@ -101,9 +101,8 @@ void FMZSceneTreeManager::OnBeginFrame()
 			SendSyncSemaphores(false);
 		}
 	}
-	
-	MZPropertyManager.OnBeginFrame();
 	MZTextureShareManager::GetInstance()->OnBeginFrame();
+	MZPropertyManager.OnBeginFrame(ExecutionState == mz::app::ExecutionState::SYNCED);
 }
 
 void FMZSceneTreeManager::OnEndFrame()
@@ -442,6 +441,7 @@ void FMZSceneTreeManager::OnMZFunctionCalled(mz::fb::UUID const& nodeId, mz::fb:
 
 void FMZSceneTreeManager::OnMZExecutedApp(mz::app::AppExecute const& appExecute)
 {
+	//return;
 	if (!flatbuffers::IsFieldPresent(&appExecute, mz::app::AppExecute::VT_LATEST_PIN_DATA))
 	{
 		return;
@@ -454,22 +454,21 @@ void FMZSceneTreeManager::OnMZExecutedApp(mz::app::AppExecute const& appExecute)
 		{
 			auto mzprop = MZPropertyManager.PropertiesById.FindRef(id);
 			mzprop->SetPropValue((void*)update->value()->data(), update->value()->size());
-			if(mzprop->TypeName == "mz.fb.Texture")
-			{
-				auto texman = MZTextureShareManager::GetInstance();
-				auto ShowAs = mzprop->PinShowAs;
-				if(MZPropertyManager.PropertyToPortalPin.Contains(mzprop->Id))
-				{
-					auto PortalId = MZPropertyManager.PropertyToPortalPin.FindRef(mzprop->Id); 
-					if(MZPropertyManager.PortalPinsById.Contains(PortalId))
-					{
-						auto Portal = MZPropertyManager.PortalPinsById.FindRef(PortalId);
-						ShowAs = Portal.ShowAs;
-					}
-				}
-				texman->UpdatePinShowAs(mzprop.Get(), ShowAs);
-				
-			}
+			// if(mzprop->TypeName == "mz.fb.Texture")
+			// {
+			// 	auto texman = MZTextureShareManager::GetInstance();
+			// 	auto ShowAs = mzprop->PinShowAs;
+			// 	if(MZPropertyManager.PropertyToPortalPin.Contains(mzprop->Id))
+			// 	{
+			// 		auto PortalId = MZPropertyManager.PropertyToPortalPin.FindRef(mzprop->Id); 
+			// 		if(MZPropertyManager.PortalPinsById.Contains(PortalId))
+			// 		{
+			// 			auto Portal = MZPropertyManager.PortalPinsById.FindRef(PortalId);
+			// 			ShowAs = Portal.ShowAs;
+			// 		}
+			// 	}
+			// 	texman->UpdatePinShowAs(mzprop.Get(), ShowAs);
+			// }
 		}
 		
 	}
@@ -2486,30 +2485,46 @@ void FMZPropertyManager::Reset(bool ResetPortals)
 	PropertiesByPropertyAndContainer.Empty();
 }
 
-void FMZPropertyManager::OnBeginFrame()
+void FMZPropertyManager::OnBeginFrame(bool bSynced)
 {
-	for (auto [id, portal] : PortalPinsById)
+	if(MZClient && bSynced)
 	{
-		if (portal.ShowAs == mz::fb::ShowAs::OUTPUT_PIN || 
-		    !PropertiesById.Contains(portal.SourceId))
+		while(MZClient->ExecuteQueue.IsEmpty());
+		mz::app::TAppExecute AppExecute;
+		MZClient->ExecuteQueue.Dequeue(AppExecute);
+		for (int i = 0; i < AppExecute.latest_pin_data.size(); i++)
 		{
-			continue;
+			auto id = *(FGuid*)AppExecute.latest_pin_data[i]->pin_id.bytes()->Data();
+			if (PropertiesById.Contains(id))
+			{
+				auto mzprop = PropertiesById.FindRef(id);
+				mzprop->SetPropValue((void*)AppExecute.latest_pin_data[i]->value.data(), AppExecute.latest_pin_data[i]->value.size());
+			}
 		}
-		
-		auto MzProperty = PropertiesById.FindRef(portal.SourceId);
-
-		auto buffer = MZClient->EventDelegates->Pop(*((mz::fb::UUID*)&MzProperty->Id));
-
-		if (!buffer.IsEmpty())
-		{
-			MzProperty->SetPropValue(buffer.data(), buffer.size());
-		}
-
-		if(portal.TypeName == "mz.fb.Texture")
-		{
-			MZTextureShareManager::GetInstance()->UpdateTexturePin(MzProperty.Get(), portal.ShowAs);
-		}
+		//MZClient->ExecuteQueue.Dequeue(AppExecute);
 	}
+	// for (auto [id, portal] : PortalPinsById)
+	// {
+	// 	if (portal.ShowAs == mz::fb::ShowAs::OUTPUT_PIN || 
+	// 	    !PropertiesById.Contains(portal.SourceId))
+	// 	{
+	// 		continue;
+	// 	}
+	// 	
+	// 	auto MzProperty = PropertiesById.FindRef(portal.SourceId);
+	//
+	// 	auto buffer = MZClient->EventDelegates->Pop(*((mz::fb::UUID*)&MzProperty->Id));
+	//
+	// 	if (!buffer.IsEmpty())
+	// 	{
+	// 		MzProperty->SetPropValue(buffer.data(), buffer.size());
+	// 	}
+	//
+	// 	if(portal.TypeName == "mz.fb.Texture")
+	// 	{
+	// 		MZTextureShareManager::GetInstance()->UpdateTexturePin(MzProperty.Get(), portal.ShowAs);
+	// 	}
+	// }
 }
 
 void FMZPropertyManager::OnEndFrame()

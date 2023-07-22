@@ -280,14 +280,15 @@ void MZEventDelegates::OnExecuteApp(mz::app::AppExecute const& appExecute)
 
 	mz::app::TAppExecute appExecuteCopy;
 	appExecute.UnPackTo(&appExecuteCopy);
-	PluginClient->TaskQueue.Enqueue([MZClient = PluginClient, appExecuteCopy]()
-		{
-			flatbuffers::FlatBufferBuilder fbb;
-			auto offset = mz::app::CreateAppExecute(fbb, &appExecuteCopy);
-			fbb.Finish(offset);
-			auto buf = fbb.Release();
-			MZClient->OnMZExecutedApp.Broadcast(*flatbuffers::GetRoot<mz::app::AppExecute>(buf.data()));
-		});
+	PluginClient->ExecuteQueue.Enqueue(appExecuteCopy);
+	// PluginClient->TaskQueue.Enqueue([MZClient = PluginClient, appExecuteCopy]()
+	// 	{
+	// 		flatbuffers::FlatBufferBuilder fbb;
+	// 		auto offset = mz::app::CreateAppExecute(fbb, &appExecuteCopy);
+	// 		fbb.Finish(offset);
+	// 		auto buf = fbb.Release();
+	// 		MZClient->OnMZExecutedApp.Broadcast(*flatbuffers::GetRoot<mz::app::AppExecute>(buf.data()));
+	// 	});
 }
 
 void MZEventDelegates::OnNodeSelected(mz::fb::UUID const& nodeId)
