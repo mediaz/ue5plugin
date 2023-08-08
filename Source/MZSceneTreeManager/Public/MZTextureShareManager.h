@@ -79,6 +79,7 @@ public:
 	
 	mz::fb::TTexture AddTexturePin(MZProperty*);
 	void UpdateTexturePin(MZProperty*, mz::fb::ShowAs);
+	bool UpdateTexturePin(MZProperty* MzProperty, mz::fb::TTexture& Texture);
 	void UpdatePinShowAs(MZProperty* MzProperty, mz::fb::ShowAs NewShowAs);
 	void Reset();
 	void WaitCommands();
@@ -116,6 +117,10 @@ public:
 	mz::app::ExecutionState ExecutionState = mz::app::ExecutionState::IDLE;
 	
 	void RenewSemaphores();
+private:
+
+	void CreateTextureResource(MZProperty*, mz::fb::TTexture& Texture, ResourceInfo& Resource);
+
 private:
 	void Initiate();
 	class MZGPUFailSafeRunnable* FailSafeRunnable = nullptr;
