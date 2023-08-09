@@ -2446,6 +2446,11 @@ void FMZPropertyManager::CreatePortal(FGuid PropertyId, mz::fb::ShowAs ShowAs)
 	}
 	auto MZProperty = PropertiesById.FindRef(PropertyId);
 
+	if(!CheckPinShowAs(MZProperty->PinCanShowAs, ShowAs))
+	{
+		LOG("Pin can't be shown as the wanted type!");
+		return;
+	}
 	MZTextureShareManager::GetInstance()->UpdatePinShowAs(MZProperty.Get(), ShowAs);
 	MZClient->AppServiceClient->SendPinShowAsChange((mz::fb::UUID&)MZProperty->Id, ShowAs);
 	
@@ -2491,6 +2496,11 @@ void FMZPropertyManager::CreatePortal(FProperty* uproperty, UObject* Container, 
 	if (PropertiesByPropertyAndContainer.Contains({uproperty, Container}))
 	{
 		auto MzProperty =PropertiesByPropertyAndContainer.FindRef({uproperty, Container});
+		if(!CheckPinShowAs(MzProperty->PinCanShowAs, ShowAs))
+		{
+			LOG("Pin can't be shown as the wanted type!");
+			return;
+		}
 		CreatePortal(MzProperty->Id, ShowAs);
 	}
 }
@@ -2537,6 +2547,30 @@ void FMZPropertyManager::SetPropertyValue()
 {
 }
 
+bool FMZPropertyManager::CheckPinShowAs(mz::fb::CanShowAs CanShowAs, mz::fb::ShowAs ShowAs)
+{
+	if(ShowAs == mz::fb::ShowAs::INPUT_PIN)
+	{
+		return (CanShowAs == mz::fb::CanShowAs::INPUT_OUTPUT) || 
+				(CanShowAs == mz::fb::CanShowAs::INPUT_PIN_OR_PROPERTY) || 
+				(CanShowAs == mz::fb::CanShowAs::INPUT_OUTPUT_PROPERTY) || 
+				(CanShowAs == mz::fb::CanShowAs::INPUT_PIN_ONLY); 
+	}
+	if(ShowAs == mz::fb::ShowAs::OUTPUT_PIN)
+	{
+		return (CanShowAs == mz::fb::CanShowAs::INPUT_OUTPUT) || 
+				(CanShowAs == mz::fb::CanShowAs::OUTPUT_PIN_OR_PROPERTY) || 
+				(CanShowAs == mz::fb::CanShowAs::INPUT_OUTPUT_PROPERTY) || 
+				(CanShowAs == mz::fb::CanShowAs::OUTPUT_PIN_ONLY); 
+	}
+	if(ShowAs == mz::fb::ShowAs::PROPERTY)
+	{
+		// we show every pin as property to begin with, may change in the future
+		return true;
+	}
+	return true;
+}
+
 void FMZPropertyManager::ActorDeleted(FGuid DeletedActorId)
 {
 }
@@ -2545,7 +2579,7 @@ flatbuffers::Offset<mz::fb::Pin> FMZPropertyManager::SerializePortal(flatbuffers
 {
 	auto SerializedMetadata = SourceProperty->SerializeMetaData(fbb);
 	bool bLive = (Portal.ShowAs == mz::fb::ShowAs::OUTPUT_PIN); 
-	return mz::fb::CreatePinDirect(fbb, (mz::fb::UUID*)&Portal.Id, TCHAR_TO_UTF8(*Portal.DisplayName), TCHAR_TO_UTF8(*Portal.TypeName), Portal.ShowAs, mz::fb::CanShowAs::INPUT_OUTPUT_PROPERTY, TCHAR_TO_UTF8(*Portal.CategoryName), SourceProperty->SerializeVisualizer(fbb), 0, 0, 0, 0, 0, 0, 0, 0, false, &SerializedMetadata, bLive, mz::fb::PinContents::PortalPin, mz::fb::CreatePortalPin(fbb, (mz::fb::UUID*)&Portal.SourceId).Union(), 0, false, mz::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*SourceProperty->ToolTipText), TCHAR_TO_UTF8(*Portal.DisplayName));
+	return mz::fb::CreatePinDirect(fbb, (mz::fb::UUID*)&Portal.Id, TCHAR_TO_UTF8(*Portal.DisplayName), TCHAR_TO_UTF8(*Portal.TypeName), Portal.ShowAs, SourceProperty->PinCanShowAs, TCHAR_TO_UTF8(*Portal.CategoryName), SourceProperty->SerializeVisualizer(fbb), 0, 0, 0, 0, 0, 0, 0, 0, false, &SerializedMetadata, bLive, mz::fb::PinContents::PortalPin, mz::fb::CreatePortalPin(fbb, (mz::fb::UUID*)&Portal.SourceId).Union(), 0, false, mz::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*SourceProperty->ToolTipText), TCHAR_TO_UTF8(*Portal.DisplayName));
 }
 
 void FMZPropertyManager::Reset(bool ResetPortals)

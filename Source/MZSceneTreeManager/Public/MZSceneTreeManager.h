@@ -36,6 +36,7 @@ public:
 		FString parentCategory = FString(""));
 
 	void SetPropertyValue();
+	bool CheckPinShowAs(mz::fb::CanShowAs CanShowAs, mz::fb::ShowAs ShowAs);
 	void CreatePortal(FGuid PropertyId, mz::fb::ShowAs ShowAs);
 	void CreatePortal(FProperty* uproperty, UObject* Container, mz::fb::ShowAs ShowAs);
 	void ActorDeleted(FGuid DeletedActorId);

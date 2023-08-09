@@ -116,6 +116,7 @@ public:
 	std::vector<uint8_t> min_val; //wrt mediaZ standarts
 	std::vector<uint8_t> max_val; //wrt mediaZ standarts
 	mz::fb::ShowAs PinShowAs = mz::fb::ShowAs::PROPERTY;
+	mz::fb::CanShowAs PinCanShowAs = mz::fb::CanShowAs::INPUT_OUTPUT_PROPERTY;
 	std::vector<TSharedPtr<MZProperty>> childProperties;
 	TMap<FString, FString> mzMetaDataMap;
 	bool transient = true;
