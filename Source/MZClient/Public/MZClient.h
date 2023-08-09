@@ -25,7 +25,7 @@ struct PinDataQueue : public TQueue<mz::Buffer>
 	std::atomic<u32> DropCount = 0;
 	std::atomic<u32> FramesSinceLastDrop = 0;
 
-	bool SeemsAlive() { return FramesSinceLastDrop && !DropCount;	}
+	bool SeemsAlive() { return FramesSinceLastDrop || !DropCount;	}
 
 	void Reset()
 	{
