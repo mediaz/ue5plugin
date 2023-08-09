@@ -155,6 +155,7 @@ public:
 	virtual void OnConnectionClosed() override;
 	virtual void OnStateChanged(mz::app::ExecutionState newState) override;
 	virtual void OnConsoleCommand(mz::app::ConsoleCommand const* consoleCommand) override;
+	virtual void OnConsoleAutoCompleteSuggestionRequest(mz::app::ConsoleAutoCompleteSuggestionRequest const* consoleAutoCompleteSuggestionRequest) override;
 	virtual void OnCloseApp() override;
 
 	FMZClient* PluginClient;

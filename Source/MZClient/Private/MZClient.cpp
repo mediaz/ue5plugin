@@ -229,11 +229,41 @@ void MZEventDelegates::OnConsoleCommand(mz::app::ConsoleCommand const* consoleCo
 	PluginClient->TaskQueue.Enqueue([MZClient = PluginClient, CommandString]()
 		{
 			MZClient->ExecuteConsoleCommand(*CommandString);
-			
-			// auto CmdExec = MakeUnique<FConsoleCommandExecutor>();
-			// //IModularFeatures::Get().RegisterModularFeature(IConsoleCommandExecutor::ModularFeatureName(), CmdExec.Get());
-			// TArray<FString> out; 
-			// CmdExec->GetAutoCompleteSuggestions(TEXT("stat"), out);
+		});
+}
+
+void MZEventDelegates::OnConsoleAutoCompleteSuggestionRequest(
+	mz::app::ConsoleAutoCompleteSuggestionRequest const* consoleAutoCompleteSuggestionRequest)
+{
+	if(!consoleAutoCompleteSuggestionRequest)
+	{
+		LOG("OnConsoleCommand request is NULL");
+	}
+	LOGF("Console command auto-complete request is here from mz %s", *FString(consoleAutoCompleteSuggestionRequest->input()->c_str()));
+	if (!PluginClient)
+	{
+		return;
+	}
+	FString InputString = FString(consoleAutoCompleteSuggestionRequest->input()->c_str());
+	PluginClient->TaskQueue.Enqueue([MZClient = PluginClient, InputString]()
+		{
+		    auto CmdExec = MakeUnique<FConsoleCommandExecutor>();
+		    //IModularFeatures::Get().RegisterModularFeature(IConsoleCommandExecutor::ModularFeatureName(), CmdExec.Get());
+		    TArray<FString> out; 
+			CmdExec->GetAutoCompleteSuggestions(*InputString, out);
+
+			flatbuffers::FlatBufferBuilder mb;
+			std::vector<flatbuffers::Offset<flatbuffers::String>> suggestions;
+
+			for(auto sugg : out)
+			{
+				suggestions.push_back(mb.CreateString(TCHAR_TO_UTF8(*sugg)));
+			}
+		    auto offset = mz::CreateAppEventOffset(mb, mz::app::CreateConsoleAutoCompleteSuggestionsUpdateDirect(mb, &suggestions));
+		    mb.Finish(offset);
+		    auto buf = mb.Release();
+		    auto root = flatbuffers::GetRoot<mz::app::AppEvent>(buf.data());
+		    MZClient->AppServiceClient->Send(*root);
 		});
 }
 
