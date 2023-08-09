@@ -22,8 +22,10 @@
 
 struct PinDataQueue : public TQueue<mz::Buffer>
 {
-	u32 DropCount = 0;
-	u32 FramesSinceLastDrop = 0;
+	std::atomic<u32> DropCount = 0;
+	std::atomic<u32> FramesSinceLastDrop = 0;
+
+	bool SeemsAlive() { return FramesSinceLastDrop && !DropCount;	}
 
 	void Reset()
 	{
@@ -42,7 +44,7 @@ struct PinDataQueue : public TQueue<mz::Buffer>
 		FramesSinceLastDrop++;
 		if (DropCount && FramesSinceLastDrop == 50)
 		{
-			UE_LOG(LogCore, Warning, TEXT("Discarding next %d track data"), DropCount);
+			UE_LOG(LogCore, Warning, TEXT("Discarding next %d track data"), DropCount.load());
 
 			while (DropCount-- && !IsEmpty())
 				Dequeue(result);
@@ -79,12 +81,12 @@ public:
 	{
 		auto queue = GetAddQueue(pinId);
 
-		if (wait)
+		if (wait && queue->SeemsAlive()) 
 		{
-			u32 trial = 0;
-			const u32 tryCount = 4000;
+			u32 tryCount = 0;
 			FPlatformProcess::ConditionalSleep(
-				[&]() { return !queue->IsEmpty() || trial++ > tryCount; });
+				[&](){ return !queue->IsEmpty() || tryCount++ > 20; },
+				.001f);
 		}
 
 		mz::Buffer result;
