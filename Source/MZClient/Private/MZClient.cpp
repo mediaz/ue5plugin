@@ -17,6 +17,10 @@
 
 //mediaz
 #include "mzFlatBuffersCommon.h"
+#include "Engine/LocalPlayer.h"
+#include "GameFramework/GameModeBase.h"
+#include "GameFramework/GameStateBase.h"
+#include "Toolkits/FConsoleCommandExecutor.h"
 
 #define LOCTEXT_NAMESPACE "FMZClient"
 #pragma optimize("", off)
@@ -208,6 +212,29 @@ void MZEventDelegates::OnStateChanged(mz::app::ExecutionState newState)
 			MZClient->OnMZStateChanged.Broadcast(newState);
 		});
 	
+}
+
+void MZEventDelegates::OnConsoleCommand(mz::app::ConsoleCommand const* consoleCommand)
+{
+	if(!consoleCommand)
+	{
+		LOG("OnConsoleCommand request is NULL");
+	}
+	LOGF("Console command is here from mz %s", *FString(consoleCommand->command()->c_str()));
+	if (!PluginClient)
+	{
+		return;
+	}
+	FString CommandString = FString(consoleCommand->command()->c_str());
+	PluginClient->TaskQueue.Enqueue([MZClient = PluginClient, CommandString]()
+		{
+			MZClient->ExecuteConsoleCommand(*CommandString);
+			
+			// auto CmdExec = MakeUnique<FConsoleCommandExecutor>();
+			// //IModularFeatures::Get().RegisterModularFeature(IConsoleCommandExecutor::ModularFeatureName(), CmdExec.Get());
+			// TArray<FString> out; 
+			// CmdExec->GetAutoCompleteSuggestions(TEXT("stat"), out);
+		});
 }
 
 void MZEventDelegates::OnCloseApp()
@@ -597,6 +624,92 @@ void FMZClient::OnUpdatedNodeExecuted(float deltaTime)
 	{
 		MZTimeStep->Step(deltaTime);
 	}
+}
+
+bool FMZClient::ExecuteConsoleCommand(const TCHAR* Input)
+{
+	IConsoleManager::Get().AddConsoleHistoryEntry(TEXT(""), Input);
+
+	int32 Len = FCString::Strlen(Input);
+	TArray<TCHAR> Buffer;
+	Buffer.AddZeroed(Len+1);
+
+	bool bHandled = false;
+	const TCHAR* ParseCursor = Input;
+	while (FParse::Line(&ParseCursor, Buffer.GetData(), Buffer.Num()))
+	{
+		bHandled = ExecInternal(Buffer.GetData()) || bHandled;
+	}
+
+	// return true if we successfully executed any of the commands 
+	return bHandled;
+}
+
+bool FMZClient::ExecInternal(const TCHAR* Input)
+{
+	bool bWasHandled = false;
+	UWorld* World = nullptr;
+	UWorld* OldWorld = nullptr;
+	MZConsoleOutput ConsoleOutput(this);
+
+	// The play world needs to handle these commands if it exists
+	if (GIsEditor && GEditor->PlayWorld && !GIsPlayInEditorWorld)
+	{
+		World = GEditor->PlayWorld;
+		OldWorld = SetPlayInEditorWorld(GEditor->PlayWorld);
+	}
+
+	ULocalPlayer* Player = GEngine->GetDebugLocalPlayer();
+	if (Player)
+	{
+		UWorld* PlayerWorld = Player->GetWorld();
+		if (!World)
+		{
+			World = PlayerWorld;
+		}
+		bWasHandled = Player->Exec(PlayerWorld, Input, ConsoleOutput);
+	}
+
+	if (!World)
+	{
+		World = GEditor->GetEditorWorldContext().World();
+	}
+	if (World)
+	{
+		if (!bWasHandled)
+		{
+			AGameModeBase* const GameMode = World->GetAuthGameMode();
+			AGameStateBase* const GameState = World->GetGameState();
+			if (GameMode && GameMode->ProcessConsoleExec(Input, ConsoleOutput, nullptr))
+			{
+				bWasHandled = true;
+			}
+			else if (GameState && GameState->ProcessConsoleExec(Input, ConsoleOutput, nullptr))
+			{
+				bWasHandled = true;
+			}
+		}
+
+		if (!bWasHandled && !Player)
+		{
+			if (GIsEditor)
+			{
+				bWasHandled = GEditor->Exec(World, Input, ConsoleOutput);
+			}
+			else
+			{
+				bWasHandled = GEngine->Exec(World, Input, ConsoleOutput);
+			}
+		}
+	}
+	// Restore the old world of there was one
+	if (OldWorld)
+	{
+		RestoreEditorWorld(OldWorld);
+	}
+
+	return bWasHandled;
+	
 }
 
 void UENodeStatusHandler::SetClient(FMZClient* _PluginClient)

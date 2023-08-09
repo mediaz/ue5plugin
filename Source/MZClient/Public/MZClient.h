@@ -126,6 +126,7 @@ DECLARE_EVENT_OneParam(FMZClient, FMZNodeSelected, mz::fb::UUID const&);
 DECLARE_EVENT_OneParam(FMZClient, FMZNodeImported, mz::fb::Node const&);
 DECLARE_EVENT_OneParam(FMZClient, FMZStateChanged, mz::app::ExecutionState);
 DECLARE_EVENT(FMZClient, FMZConnectionClosed);
+// DECLARE_EVENT_OneParam(FMZClient, FMZConsoleCommandExecuted, FString);
 
 
 /**
@@ -151,6 +152,7 @@ public:
 	virtual void OnNodeImported(mz::fb::Node const& appNode) override;
 	virtual void OnConnectionClosed() override;
 	virtual void OnStateChanged(mz::app::ExecutionState newState) override;
+	virtual void OnConsoleCommand(mz::app::ConsoleCommand const* consoleCommand) override;
 	virtual void OnCloseApp() override;
 
 	FMZClient* PluginClient;
@@ -194,6 +196,8 @@ private:
 	static void* LibHandle;
 };
 
+
+
 class MZCLIENT_API FMZClient : public IModuleInterface {
 
 public:
@@ -232,6 +236,10 @@ public:
 
 	//Called when the node is executed from mediaZ
 	void OnUpdatedNodeExecuted(float deltaTime);
+
+	bool ExecuteConsoleCommand(const TCHAR* Input);
+
+	bool ExecInternal(const TCHAR* Input);
 	
 	//Grpc client to communicate
 	TSharedPtr<MZEventDelegates> EventDelegates = 0;
@@ -267,8 +275,10 @@ public:
 	FMZNodeImported OnMZNodeImported;
 	FMZConnectionClosed OnMZConnectionClosed;
 	FMZStateChanged OnMZStateChanged;
-
+	// FMZConsoleCommandExecuted OnMZConsoleCommandExecuted;
+	
 	UENodeStatusHandler UENodeStatusHandler;
+
 protected:
 	void Reset();
 
@@ -277,5 +287,29 @@ protected:
 
 };
 
+class MZConsoleOutput : public FOutputDevice
+{
+public:
+	FMZClient* MZClient;
+	MZConsoleOutput(FMZClient* MZClient)
+		: FOutputDevice(), MZClient(MZClient)
+	{
+	}
+
+	virtual void Serialize(const TCHAR* V, ELogVerbosity::Type Verbosity, const class FName& Category) override
+	{
+		if(!MZClient)
+		{
+			return;
+		}
+		
+		flatbuffers::FlatBufferBuilder mb;
+		auto offset = mz::CreateAppEventOffset(mb ,mz::app::CreateConsoleOutputDirect(mb, TCHAR_TO_UTF8(V)));
+		mb.Finish(offset);
+		auto buf = mb.Release();
+		auto root = flatbuffers::GetRoot<mz::app::AppEvent>(buf.data());
+		MZClient->AppServiceClient->Send(*root);
+	}
+};
 
 
