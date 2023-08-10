@@ -261,14 +261,14 @@ void MZTextureShareManager::UpdateTexturePin(MZProperty* mzprop, mz::fb::ShowAs 
 }
 
 bool MZTextureShareManager::UpdateTexturePin(MZProperty* MzProperty, mz::fb::TTexture& Texture)
-	{
+{
 	mzTextureInfo info = GetResourceInfo(MzProperty);
 
 	auto resourceInfo = Copies.Find(MzProperty);
-	if(resourceInfo == nullptr)
+	if (resourceInfo == nullptr)
 		return false;
 
-	if(Texture.pid != (uint64_t)FPlatformProcess::GetCurrentProcessId())
+	if (Texture.pid != (uint64_t)FPlatformProcess::GetCurrentProcessId())
 		return false;
 
 	bool changed = false;
@@ -276,17 +276,19 @@ bool MZTextureShareManager::UpdateTexturePin(MZProperty* MzProperty, mz::fb::TTe
 	mz::fb::Format fmt = mz::fb::Format(info.Format);
 	mz::fb::ImageUsage usage = mz::fb::ImageUsage(info.Usage) | mz::fb::ImageUsage::SAMPLED;
 
-	if (Texture.width != info.Width ||  
+	if (Texture.width != info.Width ||
 		Texture.height != info.Height ||
 		Texture.format != fmt ||
 		Texture.usage != usage)
-		{
+	{
 		changed = true;
-        // the old resource should be released, but releasing it here crashes UE and ResourcesToDelete is not handled at all
-		// ResourcesToDelete.Add(resourceInfo->DstResource);
-
+		// the old resource should be released, but releasing it here crashes UE and ResourcesToDelete is not handled at all
+		ResourcesToDelete.Add(resourceInfo->DstResource, 5);
+		mz::fb::ShowAs tmp = resourceInfo->ShowAs;
 		CreateTextureResource(MzProperty, Texture, *resourceInfo);
-		}
+		resourceInfo->ShowAs = tmp;
+		Copies[MzProperty] = *resourceInfo;
+	}
 
 	return changed;
 }
@@ -637,6 +639,15 @@ void MZTextureShareManager::OnBeginFrame()
 void MZTextureShareManager::OnEndFrame()
 {
 	ProcessCopies(mz::fb::ShowAs::OUTPUT_PIN, Copies);
+
+	for(auto& [res, frameDelay] : ResourcesToDelete)
+	{
+		if(frameDelay == 0)
+		{
+			res->Release();
+		}
+		frameDelay--;
+	}
 }
 
 void MZTextureShareManager::ExecutionStateChanged(mz::app::ExecutionState newState, bool& outSemaphoresRenewed)

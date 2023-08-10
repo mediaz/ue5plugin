@@ -102,7 +102,7 @@ public:
 
 	TMap<FGuid, MZProperty*> PendingCopyQueue;
 
-	TSet<ID3D12Resource*> ResourcesToDelete;
+	TMap<ID3D12Resource*, uint32_t> ResourcesToDelete;
 	
 	TMap<MZProperty*, ResourceInfo> CopyOnTick;
 
