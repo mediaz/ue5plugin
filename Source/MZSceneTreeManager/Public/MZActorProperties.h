@@ -283,7 +283,7 @@ public:
 
 	FObjectProperty* objectprop;
 	virtual void SetPropValue_Internal(void* val, size_t size, uint8* customContainer = nullptr) override;
-	virtual std::vector<uint8> UpdatePinValue(uint8* customContainer = nullptr) override { return std::vector<uint8>(); }
+	virtual std::vector<uint8> UpdatePinValue(uint8* customContainer = nullptr) override;
 
 };
 

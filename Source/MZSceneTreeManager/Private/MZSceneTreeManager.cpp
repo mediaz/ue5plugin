@@ -665,7 +665,7 @@ void FMZSceneTreeManager::OnPropertyChanged(UObject* ObjectBeingModified, FPrope
 	//{
 	//	return;
 	//}
-	if (!PropertyChangedEvent.Property->IsValidLowLevel() || CastField<FObjectProperty>(PropertyChangedEvent.Property))
+	if (!PropertyChangedEvent.Property->IsValidLowLevel())
 	{
 		return;
 	}

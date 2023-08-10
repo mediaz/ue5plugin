@@ -649,6 +649,30 @@ void MZObjectProperty::SetPropValue_Internal(void* val, size_t size, uint8* cust
 {
 }
 
+std::vector<uint8> MZObjectProperty::UpdatePinValue(uint8* customContainer) 
+{ 
+	UObject* container = GetRawObjectContainer();
+
+	if (objectprop->PropertyClass->IsChildOf<UTextureRenderTarget2D>()) // We only support texturetarget2d from object properties
+		{
+		const mz::fb::Texture* tex = flatbuffers::GetRoot<mz::fb::Texture>(data.data());
+		mz::fb::TTexture texture;
+		tex->UnPackTo(&texture);
+
+		if (MZTextureShareManager::GetInstance()->UpdateTexturePin(this, texture))
+			{
+			// data = mz::Buffer::From(texture);
+			flatbuffers::FlatBufferBuilder fb;
+			auto offset = mz::fb::CreateTexture(fb, &texture);
+			fb.Finish(offset);
+			mz::Buffer buffer = fb.Release();
+			data = buffer;
+			}
+		}
+
+	return std::vector<uint8>(); 
+}
+
 void MZStringProperty::SetPropValue_Internal(void* val, size_t size, uint8* customContainer)
 {
 	IsChanged = true;
