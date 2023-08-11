@@ -283,7 +283,7 @@ bool MZTextureShareManager::UpdateTexturePin(MZProperty* MzProperty, mz::fb::TTe
 	{
 		changed = true;
 		// the old resource should be released, but releasing it here crashes UE and ResourcesToDelete is not handled at all
-		ResourcesToDelete.Add(resourceInfo->DstResource, 5);
+		ResourcesToDelete.Enqueue({resourceInfo->DstResource, GFrameCounter});
 		mz::fb::ShowAs tmp = resourceInfo->ShowAs;
 		CreateTextureResource(MzProperty, Texture, *resourceInfo);
 		resourceInfo->ShowAs = tmp;
@@ -639,15 +639,25 @@ void MZTextureShareManager::OnBeginFrame()
 void MZTextureShareManager::OnEndFrame()
 {
 	ProcessCopies(mz::fb::ShowAs::OUTPUT_PIN, Copies);
-
-	for(auto& [res, frameDelay] : ResourcesToDelete)
-	{
-		if(frameDelay == 0)
+	
+	ENQUEUE_RENDER_COMMAND(FMZClient_CopyOnTick)(
+		[this, FrameCount = GFrameCounter](FRHICommandListImmediate& RHICmdList)
 		{
-			res->Release();
-		}
-		frameDelay--;
-	}
+			while(!ResourcesToDelete.IsEmpty())
+			{
+				TPair<ID3D12Resource*, uint32_t> resource;
+				ResourcesToDelete.Peek(resource);
+				if(resource.Value + 5 <= FrameCount) // resources are deleted after 5 frames, because we need to make sure that they are no longer in use
+				{
+					resource.Key->Release();
+					ResourcesToDelete.Pop();
+				}
+				else
+				{
+					break;
+				}
+			}
+		});
 }
 
 void MZTextureShareManager::ExecutionStateChanged(mz::app::ExecutionState newState, bool& outSemaphoresRenewed)
