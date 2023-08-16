@@ -25,7 +25,7 @@ struct MZSCENETREEMANAGER_API  TreeNode {
 	virtual FString GetClassDisplayName() = 0;
 	
 	FString Name;
-	TSharedPtr<TreeNode> Parent;
+	TreeNode* Parent;
 	FGuid Id;
 	bool NeedsReload = true;
 	std::vector<TSharedPtr<TreeNode>> Children;
@@ -72,25 +72,31 @@ struct MZSCENETREEMANAGER_API  FolderNode : TreeNode
 	virtual ~FolderNode();
 };
 
-class MZSCENETREEMANAGER_API MZSceneTree {
-
+class MZSCENETREEMANAGER_API MZSceneTree
+{
 public:
 	MZSceneTree();
 
 	TSharedPtr<TreeNode> Root;
 	bool IsSorted = false;
-	TMap<FGuid, TSharedPtr<TreeNode>> NodeMap;
 	TMap<FGuid, TSet<AActor*>> ChildMap;
 
 	TSharedPtr<FolderNode> FindOrAddChildFolder(TSharedPtr<TreeNode> node, FString name, TSharedPtr<TreeNode>& mostRecentParent);
-	TSharedPtr<ActorNode> AddActor(FString folderPath, AActor* actor);
-	TSharedPtr<ActorNode> AddActor(FString folderPath, AActor* actor, TSharedPtr<TreeNode>& mostRecentParent);
-	TSharedPtr<ActorNode> AddActor(TSharedPtr<TreeNode> parent, AActor* actor);
-	TSharedPtr<SceneComponentNode> AddSceneComponent(TSharedPtr<ActorNode> parent, USceneComponent* sceneComponent);
+	TSharedPtr<ActorNode> AddActor(FString folderPath, AActor* actor, FGuid ForcedGuid = {});
+	TSharedPtr<ActorNode> AddActor(::FString folderPath, ::AActor* actor, TSharedPtr<TreeNode>& mostRecentParent, FGuid ForcedGuid = {});
+	TSharedPtr<ActorNode> AddActor(TreeNode* parent, AActor* actor);
+	TSharedPtr<SceneComponentNode> AddSceneComponent(ActorNode* parent, USceneComponent* sceneComponent);
 	TSharedPtr<SceneComponentNode> AddSceneComponent(TSharedPtr<SceneComponentNode> parent, USceneComponent* sceneComponent);
+	ActorNode* GetNode(AActor* Actor);
+	ActorNode* GetNodeFromActorId(FGuid ActorId);
+	FGuid      GetNodeIdActorId(FGuid ActorId);
+	TreeNode* GetNode(FGuid NodeId);
+	void RemoveNode(FGuid NodeId);
 
 	void Clear();
 
 private:
+	TMap<FGuid, TSharedPtr<TreeNode>> NodeMap;
+	TMap<FGuid, FGuid> ActorIdToNodeId;
 	void ClearRecursive(TSharedPtr<TreeNode> node);
 };

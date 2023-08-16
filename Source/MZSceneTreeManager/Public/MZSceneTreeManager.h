@@ -49,13 +49,18 @@ public:
 	TMap<FGuid, MZPortal> PortalPinsById;
 	TMap<FGuid, TSharedPtr<MZProperty>> PropertiesById;
 	TMap<FProperty*, TSharedPtr<MZProperty>> PropertiesByPointer;
-	TMap<FGuid, TSet<FGuid>> ActorsPropertyIds; //actor guid x actor mzproperties guid
 
 	TMap<TPair<FProperty*, void*>, TSharedPtr<MZProperty>> PropertiesByPropertyAndContainer;
 	void Reset(bool ResetPortals = true);
 
 	void OnBeginFrame();
 	void OnEndFrame();
+};
+
+struct SavedActorData
+{
+	TMap<FString, FString> Metadata;
+	FGuid ForcedGuid = {};
 };
 
 class MZSCENETREEMANAGER_API FMZActorManager
@@ -69,8 +74,8 @@ public:
 	};
 
 	AActor* GetParentTransformActor();
-	AActor* SpawnActor(FString SpawnTag);
-	AActor* SpawnUMGRenderManager(FString umgTag,UUserWidget* widget);
+	AActor* SpawnActor(FString SpawnTag, FGuid ForcedGuid = {});
+	AActor* SpawnUMGRenderManager(FString umgTag,UUserWidget* widget, FGuid ForcedGuid = {});
 	AActor* SpawnActor(UClass* ClassToSpawn);
 	void ClearActors();
 	
@@ -87,7 +92,7 @@ public:
 	class FMZClient* MZClient;
 	
 	TSet<FGuid> ActorIds;
-	TArray< TPair<MZActorReference,TMap<FString,FString>> > Actors;
+	TArray< TPair<MZActorReference,SavedActorData> > Actors;
 };
 
 
@@ -155,10 +160,9 @@ public:
 	void OnMZStateChanged(mz::app::ExecutionState);
 	//END OF MediaZ DELEGATES
 	 
-	void PopulateAllChilds(AActor* actor);
 
-	void PopulateAllChilds(FGuid ActorId);
-
+	void PopulateAllChildsOfActor(FGuid ActorId);
+	
 	void PopulateAllChildsOfSceneComponentNode(SceneComponentNode* SceneComponentNode);
 
 	void SendSyncSemaphores(bool RenewSemaphores);
@@ -219,7 +223,9 @@ public:
 	void SendActorAdded(AActor* actor, FString spawnTag = FString());
 
 	//Deletes the node from scene tree and sends it to mediaZ
-	void SendActorDeleted(FGuid Id, TSet<UObject*>& RemovedObjects);
+	void SendActorDeleted(AActor* Actor, TSet<UObject*>& RemovedObjects);
+	
+	void PopulateAllChildsOfActor(AActor* actor);
 
 	//Called when pie is started
 	void HandleBeginPIE(bool bIsSimulating);
@@ -235,8 +241,8 @@ public:
 
 	// UObject* FMZSceneTreeManager::FindObjectContainerFromContainerPath(UObject* BaseContainer, FString ContainerPath);
 	//Remove properties of tree node from registered properties and pins
-	void RemoveProperties(TSharedPtr<TreeNode> Node,
-		TSet<TSharedPtr<MZProperty>>& PropertiesToRemove);
+	void RemoveProperties(::TreeNode* Node,
+	                      TSet<TSharedPtr<MZProperty>>& PropertiesToRemove);
 
 	void CheckPins(TSet<UObject*>& RemovedObjects,
 		TSet<TSharedPtr<MZProperty>>& PinsToRemove,

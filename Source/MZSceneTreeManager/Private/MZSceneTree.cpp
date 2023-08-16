@@ -2,6 +2,15 @@
 
 #include "MZSceneTree.h"
 
+#include "Chaos/AABB.h"
+#include "Chaos/AABB.h"
+#include "Chaos/AABB.h"
+#include "Chaos/AABB.h"
+#include "Chaos/AABB.h"
+#include "Chaos/AABB.h"
+#include "Chaos/AABB.h"
+#include "Chaos/AABB.h"
+
 MZSceneTree::MZSceneTree()
 {
 	Root = TSharedPtr<FolderNode>(new FolderNode);
@@ -20,7 +29,7 @@ TSharedPtr<FolderNode> MZSceneTree::FindOrAddChildFolder(TSharedPtr<TreeNode> no
 		}
 	}
 	TSharedPtr<FolderNode> newChild(new FolderNode);
-	newChild->Parent = node;
+	newChild->Parent = node.Get();
 	newChild->Name = name;
 	if(name == NAME_Reality_FolderName.ToString())
 	{
@@ -42,6 +51,7 @@ void MZSceneTree::Clear()
 {
 	ClearRecursive(Root);
 	NodeMap.Empty();
+	ActorIdToNodeId.Empty();
 	NodeMap.Add(Root->Id, Root);
 }
 
@@ -58,13 +68,13 @@ void MZSceneTree::ClearRecursive(TSharedPtr<TreeNode> node)
 	}
 }
 
-TSharedPtr<ActorNode> MZSceneTree::AddActor(FString folderPath, AActor* actor)
+TSharedPtr<ActorNode> MZSceneTree::AddActor(FString folderPath, AActor* actor, FGuid ForcedGuid)
 {
 	TSharedPtr<TreeNode> mostRecentParent;
-	return AddActor(folderPath, actor, mostRecentParent);
+	return AddActor(folderPath, actor, mostRecentParent, ForcedGuid);
 }
 
-TSharedPtr<ActorNode> MZSceneTree::AddActor(FString folderPath, AActor* actor, TSharedPtr<TreeNode>& mostRecentParent)
+TSharedPtr<ActorNode> MZSceneTree::AddActor(FString folderPath, AActor* actor, TSharedPtr<TreeNode>& mostRecentParent, FGuid ForcedGuid)
 {
 	if (!actor)
 	{
@@ -83,21 +93,22 @@ TSharedPtr<ActorNode> MZSceneTree::AddActor(FString folderPath, AActor* actor, T
 	}
 
 	TSharedPtr<ActorNode> newChild(new ActorNode);
-	newChild->Parent = ptr;
+	newChild->Parent = ptr.Get();
 	//todo fix display names newChild->Name = actor->GetActorLabel();
 	newChild->Name = actor->GetFName().ToString();
-	newChild->Id = actor->GetActorGuid();
+	newChild->Id = ForcedGuid.IsValid() ? ForcedGuid : FGuid::NewGuid();
 	newChild->actor = MZActorReference(actor);
 	newChild->NeedsReload = true;
 	ptr->Children.push_back(newChild);
 	NodeMap.Add(newChild->Id, newChild);
+	ActorIdToNodeId.Add(actor->GetActorGuid(), newChild->Id);
 
 	if (actor->GetRootComponent())
 	{
 		TSharedPtr<SceneComponentNode> loadingChild(new SceneComponentNode);
 		loadingChild->Name = "Loading...";
 		loadingChild->Id = FGuid::NewGuid();
-		loadingChild->Parent = newChild;
+		loadingChild->Parent = newChild.Get();
 		newChild->Children.push_back(loadingChild);
 	}
 	if (!mostRecentParent)
@@ -107,7 +118,7 @@ TSharedPtr<ActorNode> MZSceneTree::AddActor(FString folderPath, AActor* actor, T
 	return newChild;
 }
 
-TSharedPtr<ActorNode> MZSceneTree::AddActor(TSharedPtr<TreeNode> parent, AActor* actor)
+TSharedPtr<ActorNode> MZSceneTree::AddActor(TreeNode* parent, AActor* actor)
 {
 	if (!actor)
 	{
@@ -115,31 +126,32 @@ TSharedPtr<ActorNode> MZSceneTree::AddActor(TSharedPtr<TreeNode> parent, AActor*
 	}
 	if (!parent)
 	{
-		parent = Root;
+		parent = Root.Get();
 	}
 
 	TSharedPtr<ActorNode> newChild(new ActorNode);
 	newChild->Parent = parent;
 	newChild->Name = actor->GetActorLabel();
-	newChild->Id = actor->GetActorGuid();
+	newChild->Id = FGuid::NewGuid();
 	newChild->actor = MZActorReference(actor);
 	newChild->NeedsReload = true;
 	parent->Children.push_back(newChild);
 	NodeMap.Add(newChild->Id, newChild);
-
+	ActorIdToNodeId.Add(actor->GetActorGuid(), newChild->Id);
+	
 	if (actor->GetRootComponent())
 	{
 		TSharedPtr<SceneComponentNode> loadingChild(new SceneComponentNode);
 		loadingChild->Name = "Loading...";
 		loadingChild->Id = FGuid::NewGuid();
-		loadingChild->Parent = newChild;
+		loadingChild->Parent = newChild.Get();
 		newChild->Children.push_back(loadingChild);
 	}
 
 	return newChild;
 }
 
-TSharedPtr<SceneComponentNode> MZSceneTree::AddSceneComponent(TSharedPtr<ActorNode> parent, USceneComponent* sceneComponent)
+TSharedPtr<SceneComponentNode> MZSceneTree::AddSceneComponent(ActorNode* parent, USceneComponent* sceneComponent)
 {
 	TSharedPtr<SceneComponentNode>newComponentNode(new SceneComponentNode);
 	newComponentNode->mzMetaData.Add("PinnedCategories", "Transform");
@@ -154,7 +166,7 @@ TSharedPtr<SceneComponentNode> MZSceneTree::AddSceneComponent(TSharedPtr<ActorNo
 	TSharedPtr<SceneComponentNode> loadingChild(new SceneComponentNode);
 	loadingChild->Name = "Loading...";
 	loadingChild->Id = FGuid::NewGuid();
-	loadingChild->Parent = newComponentNode;
+	loadingChild->Parent = newComponentNode.Get();
 	newComponentNode->Children.push_back(loadingChild);
 
 	return newComponentNode;
@@ -167,7 +179,7 @@ TSharedPtr<SceneComponentNode> MZSceneTree::AddSceneComponent(TSharedPtr<SceneCo
 	newComponentNode->sceneComponent = MZComponentReference(sceneComponent);
 	newComponentNode->Id = FGuid::NewGuid();
 	newComponentNode->Name = sceneComponent->GetFName().ToString();
-	newComponentNode->Parent = parent;
+	newComponentNode->Parent = parent.Get();
 	newComponentNode->NeedsReload = true;
 	parent->Children.push_back(newComponentNode);
 	NodeMap.Add(newComponentNode->Id, newComponentNode);
@@ -175,12 +187,53 @@ TSharedPtr<SceneComponentNode> MZSceneTree::AddSceneComponent(TSharedPtr<SceneCo
 	TSharedPtr<SceneComponentNode> loadingChild(new SceneComponentNode);
 	loadingChild->Name = "Loading...";
 	loadingChild->Id = FGuid::NewGuid();
-	loadingChild->Parent = newComponentNode;
+	loadingChild->Parent = newComponentNode.Get();
 	newComponentNode->Children.push_back(loadingChild);
 
 	return newComponentNode;
 }
 
+ActorNode* MZSceneTree::GetNode(AActor* Actor)
+{
+	if(!Actor)
+		return  nullptr;
+	return GetNodeFromActorId(Actor->GetActorGuid());
+}
+
+ActorNode* MZSceneTree::GetNodeFromActorId(FGuid ActorId)
+{
+	if(!ActorIdToNodeId.Contains(ActorId))
+		return  nullptr;
+	
+	auto NodeId = ActorIdToNodeId.FindRef(ActorId);
+	if(!NodeMap.Contains(NodeId))
+		return nullptr;
+	
+	auto Node = NodeMap.FindRef(NodeId);
+	return Node->GetAsActorNode();
+}
+
+FGuid MZSceneTree::GetNodeIdActorId(FGuid ActorId)
+{
+	if(!ActorIdToNodeId.Contains(ActorId))
+		return {};
+	
+	return ActorIdToNodeId.FindRef(ActorId);
+}
+
+TreeNode* MZSceneTree::GetNode(FGuid NodeId)
+{
+	if(!NodeMap.Contains(NodeId))
+		return nullptr;
+	
+	auto Node = NodeMap.FindRef(NodeId);
+	return Node.Get();
+}
+
+void MZSceneTree::RemoveNode(FGuid NodeId)
+{
+	NodeMap.Remove(NodeId);
+}
 
 flatbuffers::Offset<mz::fb::Node> TreeNode::Serialize(flatbuffers::FlatBufferBuilder& fbb)
 {
