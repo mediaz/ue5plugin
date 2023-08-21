@@ -91,13 +91,11 @@ void FMZSceneTreeManager::AddCustomFunction(MZCustomFunction* CustomFunction)
 
 void FMZSceneTreeManager::OnBeginFrame()
 {
-	if(ToggleExecutionState)
+	if(ToggleExecutionStateToSynced)
 	{
-		ToggleExecutionState = false;
-		ExecutionState = ExecutionState == mz::app::ExecutionState::IDLE ? mz::app::ExecutionState::SYNCED : mz::app::ExecutionState::IDLE;
-		bool SemaphoresRenewed = false;
-		MZTextureShareManager::GetInstance()->ExecutionStateChanged(ExecutionState, SemaphoresRenewed);
-		if(SemaphoresRenewed)
+		ToggleExecutionStateToSynced = false;
+		ExecutionState = mz::app::ExecutionState::SYNCED;
+		if (MZTextureShareManager::GetInstance()->SwitchStateToSynced())
 		{
 			SendSyncSemaphores(false);
 		}
@@ -150,7 +148,7 @@ void FMZSceneTreeManager::StartupModule()
 	MZClient->OnMZContextMenuCommandFired.AddRaw(this, &FMZSceneTreeManager::OnMZContextMenuCommandFired);
 	MZClient->OnMZNodeImported.AddRaw(this, &FMZSceneTreeManager::OnMZNodeImported);
 	MZClient->OnMZNodeRemoved.AddRaw(this, &FMZSceneTreeManager::OnMZNodeRemoved);
-	MZClient->OnMZStateChanged.AddRaw(this, &FMZSceneTreeManager::OnMZStateChanged);
+	MZClient->OnMZStateChanged_GRPCThread.AddRaw(this, &FMZSceneTreeManager::OnMZStateChanged_GRPCThread);
 
 	FCoreDelegates::OnBeginFrame.AddRaw(this, &FMZSceneTreeManager::OnBeginFrame);
 	FCoreDelegates::OnEndFrame.AddRaw(this, &FMZSceneTreeManager::OnEndFrame);
@@ -325,8 +323,7 @@ void FMZSceneTreeManager::OnMZConnectionClosed()
 	if(ExecutionState == mz::app::ExecutionState::SYNCED)
 	{
 		ExecutionState = mz::app::ExecutionState::IDLE;
-		bool discard;
-		MZTextureShareManager::GetInstance()->ExecutionStateChanged(ExecutionState, discard);
+		MZTextureShareManager::GetInstance()->SwitchStateToIdle();
 	}
 }
 
@@ -541,11 +538,19 @@ void FMZSceneTreeManager::OnMZNodeRemoved()
 	MZActorManager->ClearActors();
 }
 
-void FMZSceneTreeManager::OnMZStateChanged(mz::app::ExecutionState newState)
+void FMZSceneTreeManager::OnMZStateChanged_GRPCThread(mz::app::ExecutionState newState)
 {
 	if(ExecutionState != newState)
 	{
-		ToggleExecutionState = true; 
+		if (newState == mz::app::ExecutionState::SYNCED)
+		{
+			ToggleExecutionStateToSynced = true;
+		}
+		else if (newState == mz::app::ExecutionState::IDLE)
+		{
+			ExecutionState = newState;
+			MZTextureShareManager::GetInstance()->SwitchStateToIdle_GRPCThread(0);
+		}
 	}
 }
 

@@ -207,10 +207,13 @@ void MZEventDelegates::OnStateChanged(mz::app::ExecutionState newState)
 	{
 		return;
 	}
-	PluginClient->TaskQueue.Enqueue([MZClient = PluginClient, newState]()
-		{
-			MZClient->OnMZStateChanged.Broadcast(newState);
-		});
+
+	PluginClient->OnMZStateChanged_GRPCThread.Broadcast(newState);
+
+	//PluginClient->TaskQueue.Enqueue([MZClient = PluginClient, newState]()
+	//	{
+	//		MZClient->OnMZStateChanged.Broadcast(newState);
+	//	});
 	
 }
 

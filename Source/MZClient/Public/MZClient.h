@@ -135,7 +135,7 @@ DECLARE_EVENT_OneParam(FMZClient, FMZExecutedApp, mz::app::AppExecute const&);
 DECLARE_EVENT_TwoParams(FMZClient, FMZFunctionCalled, mz::fb::UUID const&, mz::fb::Node const&);
 DECLARE_EVENT_OneParam(FMZClient, FMZNodeSelected, mz::fb::UUID const&);
 DECLARE_EVENT_OneParam(FMZClient, FMZNodeImported, mz::fb::Node const&);
-DECLARE_EVENT_OneParam(FMZClient, FMZStateChanged, mz::app::ExecutionState);
+DECLARE_EVENT_OneParam(FMZClient, FMZStateChanged_GRPCThread, mz::app::ExecutionState);
 DECLARE_EVENT(FMZClient, FMZConnectionClosed);
 // DECLARE_EVENT_OneParam(FMZClient, FMZConsoleCommandExecuted, FString);
 
@@ -286,7 +286,7 @@ public:
 	FMZNodeSelected OnMZNodeSelected;
 	FMZNodeImported OnMZNodeImported;
 	FMZConnectionClosed OnMZConnectionClosed;
-	FMZStateChanged OnMZStateChanged;
+	FMZStateChanged_GRPCThread OnMZStateChanged_GRPCThread;
 	// FMZConsoleCommandExecuted OnMZConsoleCommandExecuted;
 	
 	UENodeStatusHandler UENodeStatusHandler;

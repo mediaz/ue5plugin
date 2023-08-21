@@ -91,8 +91,10 @@ public:
 	void ProcessCopies(mz::fb::ShowAs, TMap<MZProperty*, ResourceInfo>& CopyMap);
 	void OnBeginFrame();
 	void OnEndFrame();
-	void ExecutionStateChanged(mz::app::ExecutionState newState, bool& outSemaphoresRenewed);
-	
+	bool SwitchStateToSynced();
+	void SwitchStateToIdle_GRPCThread(u64 LastFrameNumber);
+	void SwitchStateToIdle();
+
 	class FMZClient* MZClient;
 	
 	struct ID3D12Device* Dev;

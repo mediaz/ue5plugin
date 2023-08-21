@@ -682,33 +682,37 @@ void MZTextureShareManager::OnEndFrame()
 		});
 }
 
-void MZTextureShareManager::ExecutionStateChanged(mz::app::ExecutionState newState, bool& outSemaphoresRenewed)
+bool MZTextureShareManager::SwitchStateToSynced()
 {
-	if(newState != ExecutionState)
-	{
-		switch (newState)
-		{
-		case mz::app::ExecutionState::SYNCED:
-			RenewSemaphores();
-			outSemaphoresRenewed = true;
-			break;
-		case mz::app::ExecutionState::IDLE:
-			FrameCounter = 0;
-
-			if(InputFence && OutputFence)
-			{
-				InputFence->Signal(UINT64_MAX);
-				OutputFence->Signal(UINT64_MAX);
-			}
-			outSemaphoresRenewed = false;
-			break;
-		}
-	}
+	RenewSemaphores();
 	ENQUEUE_RENDER_COMMAND(FMZClient_CopyOnTick)(
-    		[this, newState](FRHICommandListImmediate& RHICmdList)
-    		{
-				ExecutionState = newState;
-    		});
+		[this](FRHICommandListImmediate& RHICmdList)
+		{
+			ExecutionState = mz::app::ExecutionState::SYNCED;
+		});
+
+	return true;
+}
+
+void MZTextureShareManager::SwitchStateToIdle_GRPCThread(u64 LastFrameNumber)
+{
+	if (InputFence && OutputFence)
+	{
+		InputFence->Signal(UINT64_MAX);
+		OutputFence->Signal(UINT64_MAX);
+	}
+	FrameCounter = 0;
+	ExecutionState = mz::app::ExecutionState::IDLE;
+}
+
+void MZTextureShareManager::SwitchStateToIdle()
+{
+	if (InputFence && OutputFence)
+	{
+		InputFence->Signal(UINT64_MAX);
+		OutputFence->Signal(UINT64_MAX);
+	}
+	FrameCounter = 0;
 }
 
 void MZTextureShareManager::Reset()
