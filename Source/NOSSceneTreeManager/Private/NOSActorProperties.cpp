@@ -291,6 +291,73 @@ void NOSTrackProperty::SetPropValue_Internal(void* val, size_t size, uint8* cust
 	MarkState();
 }
 
+bool NOSTrackProperty::CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScriptArrayHelper_InContainer& ArrayHelper)
+{
+	std::vector<flatbuffers::Offset<nos::fb::Track>> TrackArray;
+	for(int i = 0; i < ArrayHelper.Num(); i++)
+	{
+		if(auto ElementPtr = ArrayHelper.GetRawPtr(i))
+		{
+			FNOSTrack TrackData = *(FNOSTrack*)ElementPtr;
+			
+			nos::fb::TTrack TempTrack = {};
+			TempTrack.location = nos::fb::vec3(TrackData.location.X, TrackData.location.Y, TrackData.location.Z);
+			TempTrack.rotation = nos::fb::vec3(TrackData.rotation.X, TrackData.rotation.Y, TrackData.rotation.Z);
+			TempTrack.fov = TrackData.fov;
+			TempTrack.focus = TrackData.focus_distance;
+			TempTrack.zoom = TrackData.zoom;
+			TempTrack.render_ratio = TrackData.render_ratio;
+			TempTrack.sensor_size = nos::fb::vec2(TrackData.sensor_size.X, TrackData.sensor_size.Y);
+			TempTrack.pixel_aspect_ratio = TrackData.pixel_aspect_ratio;
+			TempTrack.nodal_offset = TrackData.nodal_offset;
+			auto& Distortion = TempTrack.lens_distortion;
+			Distortion.mutable_k1k2() = nos::fb::vec2(TrackData.k1, TrackData.k2);
+			Distortion.mutable_center_shift() = nos::fb::vec2(TrackData.center_shift.X, TrackData.center_shift.Y);
+			Distortion.mutate_distortion_scale(TrackData.distortion_scale);
+			auto offset = nos::fb::CreateTrack(fb, &TempTrack);
+			TrackArray.push_back(offset);
+		}
+	}
+	auto offset = fb.CreateVector(TrackArray).o;
+	//auto offset = fb.CreateVectorOfSortedTables(&TrackArray).o;
+	fb.Finish(flatbuffers::Offset<flatbuffers::Vector<nos::fb::Track>>(offset));
+	
+	return true;
+}
+
+void NOSTrackProperty::SetArrayPropValues(void* val, size_t size, FScriptArrayHelper_InContainer& ArrayHelper)
+{
+	auto vec = (flatbuffers::Vector<flatbuffers::Offset<nos::fb::Track>>*)val; 
+	int ct = vec->size();
+	ArrayHelper.Resize(ct);
+	for(int i = 0; i < ct; i++)
+	{
+		ArrayHelper.ExpandForIndex(i);
+		auto track = vec->Get(i);
+		// auto track = flatbuffers::GetRoot<nos::fb::Track>(val);
+		FNOSTrack* TrackData = (FNOSTrack*)ArrayHelper.GetRawPtr(i);
+		*TrackData = {};
+		nos::fb::TTrack TTrack = {};
+		track->UnPackTo(&TTrack);
+
+		TrackData->location = FVector(TTrack.location.x(), TTrack.location.y(), TTrack.location.z());
+		TrackData->rotation = FVector(TTrack.rotation.x(), TTrack.rotation.y(), TTrack.rotation.z());
+		TrackData->fov = TTrack.fov;
+		TrackData->focus_distance = TTrack.focus_distance;
+		TrackData->zoom = TTrack.zoom;
+		TrackData->render_ratio = TTrack.render_ratio;
+		TrackData->sensor_size = FVector2D(TTrack.sensor_size.x(), TTrack.sensor_size.y());
+		TrackData->pixel_aspect_ratio = TTrack.pixel_aspect_ratio;
+		TrackData->nodal_offset = TTrack.nodal_offset;
+		auto distortion = TTrack.lens_distortion;
+		TrackData->distortion_scale = distortion.distortion_scale();
+		auto& k1k2 = distortion.k1k2();
+		TrackData->k1 = k1k2.x();
+		TrackData->k2 = k1k2.y();
+		TrackData->center_shift = FVector2D(distortion.center_shift().x(), distortion.center_shift().y());
+	}
+}
+
 void NOSTrackProperty::SetProperty_InCont(void* container, void* val)
 {
 	auto track = flatbuffers::GetRoot<nos::fb::Track>(val);
@@ -462,6 +529,78 @@ void NOSRotatorProperty::SetProperty_InCont(void* container, void* val)
 	structprop->CopyCompleteValue(structprop->ContainerPtrToValuePtr<void>(container), &rotator);
 }
 
+std::vector<uint8> NOSColorProperty::UpdatePinValue(uint8* customContainer)
+{
+	void* container = nullptr;
+	if (customContainer) container = customContainer;
+	else if (ComponentContainer) container = ComponentContainer.Get();
+	else if (ActorContainer) container = ActorContainer.Get();
+	else if (ObjectPtr && IsValid(ObjectPtr)) container = ObjectPtr;
+	else if (StructPtr) container = StructPtr;
+
+	if (container)
+	{
+		FColor* val = (FColor*)Property->ContainerPtrToValuePtr<void>(container);
+		nos::fb::vec4u8 cl = {val->R, val->G, val->B, val->A};
+		memcpy(data.data(), &cl, data.size());
+	}
+	return data;
+
+}
+
+bool NOSColorProperty::CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScriptArrayHelper_InContainer& ArrayHelper)
+{
+	fb.StartVector(ArrayHelper.Num(), sizeof(FColor), 1);
+	for(int i = ArrayHelper.Num()-1; i >= 0; i--)
+	{
+		if(auto ElementPtr = ArrayHelper.GetRawPtr(i))
+		{
+			FColor* val = (FColor*)ElementPtr;
+			nos::fb::vec4u8 cl = {val->R, val->G, val->B, val->A};
+			fb.PushBytes((uint8_t*)&cl, sizeof(FColor));
+		}
+	}
+	auto offset = fb.EndVector(ArrayHelper.Num());
+	fb.Finish(flatbuffers::Offset<flatbuffers::Vector<uint8_t>>(offset));
+	return true;
+}
+
+void NOSColorProperty::SetArrayPropValues(void* val, size_t size, FScriptArrayHelper_InContainer& ArrayHelper)
+{
+	auto vec = (flatbuffers::Vector<u8>*)val; 
+	int ct = vec->size();
+	ArrayHelper.Resize(ct);
+	for(int i = 0; i < ct; i++)
+	{
+		ArrayHelper.ExpandForIndex(i);
+		uint8_t* el = vec->data() + (i * Property->ElementSize);
+		uint8_t r = ((uint8_t*)el)[0];
+		uint8_t g = ((uint8_t*)el)[1];
+		uint8_t b = ((uint8_t*)el)[2];
+		uint8_t a = ((uint8_t*)el)[3];
+		FColor col;
+		col.R = r;
+		col.G = g;
+		col.B = b;
+		col.A = a;
+		structprop->CopyCompleteValue(ArrayHelper.GetRawPtr(i), &col);
+	}
+}
+
+void NOSColorProperty::SetProperty_InCont(void* container, void* val)
+{
+	uint8_t r = ((uint8_t*)val)[0];
+	uint8_t g = ((uint8_t*)val)[1];
+	uint8_t b = ((uint8_t*)val)[2];
+	uint8_t a = ((uint8_t*)val)[3];
+	FColor col;
+	col.R = r;
+	col.G = g;
+	col.B = b;
+	col.A = a;
+	structprop->CopyCompleteValue(structprop->ContainerPtrToValuePtr<void>(container), &col);
+}
+
 std::vector<uint8> NOSRotatorProperty::UpdatePinValue(uint8* customContainer)
 {
 	void* container = nullptr;
@@ -621,6 +760,64 @@ NOSStructProperty::NOSStructProperty(UObject* container, FStructProperty* uprope
 void NOSStructProperty::SetPropValue_Internal(void* val, size_t size, uint8* customContainer)
 {
 	//empty
+}
+
+NOSArrayProperty::NOSArrayProperty(UObject* container, FArrayProperty* ArrayProperty, FProperty* InnerProperty,
+	FString parentCategory, uint8* StructPtr, NOSStructProperty* parentProperty)
+	: NOSProperty(container, ArrayProperty, parentCategory, StructPtr, parentProperty), ArrayProperty(ArrayProperty), InnerProperty(InnerProperty)
+{
+	auto nosprop = NOSPropertyFactory::CreateProperty(nullptr, InnerProperty, "", nullptr, nullptr);
+	if(nosprop)
+		TypeName = "[" + nosprop->TypeName + "]";
+}
+
+void NOSArrayProperty::SetPropValue_Internal(void* val, size_t size, uint8* customContainer)
+{
+	void* container = nullptr;
+	if (customContainer) container = customContainer;
+	else if (ComponentContainer) container = ComponentContainer.Get();
+	else if (ActorContainer) container = ActorContainer.Get();
+	else if (ObjectPtr && IsValid(ObjectPtr)) container = ObjectPtr;
+	else if (StructPtr) container = StructPtr;
+
+	if (container)
+	{
+		auto nosprop = NOSPropertyFactory::CreateProperty(nullptr, InnerProperty, "", nullptr, nullptr);
+		if(!nosprop)
+			return;
+		
+		FScriptArrayHelper_InContainer ArrayHelper(ArrayProperty, container);
+		nosprop->SetArrayPropValues(val, size, ArrayHelper);
+	}
+	
+	MarkState();
+	return;
+}
+
+std::vector<uint8> NOSArrayProperty::UpdatePinValue(uint8* customContainer)
+{
+	void* container = nullptr;
+	if (customContainer) container = customContainer;
+	else if (ComponentContainer) container = ComponentContainer.Get();
+	else if (ActorContainer) container = ActorContainer.Get();
+	else if (ObjectPtr && IsValid(ObjectPtr)) container = ObjectPtr;
+	else if (StructPtr) container = StructPtr;
+
+	if (container)
+	{
+		auto nosprop = NOSPropertyFactory::CreateProperty(nullptr, InnerProperty, "", nullptr, nullptr);
+		if(!nosprop)
+			return data;
+		
+		FScriptArrayHelper_InContainer ArrayHelper(ArrayProperty, container);
+		flatbuffers::FlatBufferBuilder fb;
+		if(nosprop->CreateFbArray(fb, ArrayHelper))
+		{
+			auto buf = fb.Release();
+			data = std::vector<uint8_t>{flatbuffers::GetMutableRoot<u8>(buf.data()), buf.data()+buf.size()};
+		}
+	}
+	return data;
 }
 
 bool PropertyVisible(FProperty* ueproperty);
@@ -817,6 +1014,39 @@ std::vector<uint8> NOSStringProperty::UpdatePinValue(uint8* customContainer)
 	return data;
 }
 
+bool NOSStringProperty::CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScriptArrayHelper_InContainer& ArrayHelper)
+{
+	std::vector<flatbuffers::Offset<flatbuffers::String>> StringArray;
+	for(int i = 0; i < ArrayHelper.Num(); i++)
+	{
+		if(auto ElementPtr = ArrayHelper.GetRawPtr(i))
+		{
+			FString val = *(FString*)ElementPtr;
+			char* result = TCHAR_TO_ANSI(*val);
+			auto offset = fb.CreateString(result);
+			StringArray.push_back(offset);
+		}
+	}
+	auto offset = fb.CreateVector(StringArray).o;
+	fb.Finish(flatbuffers::Offset<flatbuffers::Vector<nos::fb::Track>>(offset));
+	return true;
+}
+
+void NOSStringProperty::SetArrayPropValues(void* val, size_t size, FScriptArrayHelper_InContainer& ArrayHelper)
+{
+	auto vec = (flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>*)val; 
+	int ct = vec->size();
+	ArrayHelper.Resize(ct);
+	for(int i = 0; i < ct; i++)
+	{
+		ArrayHelper.ExpandForIndex(i);
+		auto string = vec->Get(i);
+		FString newString(string->c_str());
+		FString* String = (FString*)ArrayHelper.GetRawPtr(i);
+		*String = newString;
+	}
+}
+
 void NOSNameProperty::SetPropValue_Internal(void* val, size_t size, uint8* customContainer)
 {
 	IsChanged = true;
@@ -906,6 +1136,40 @@ std::vector<uint8> NOSTextProperty::UpdatePinValue(uint8* customContainer)
 
 	return data;
 }
+
+bool NOSTextProperty::CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScriptArrayHelper_InContainer& ArrayHelper)
+{
+	std::vector<flatbuffers::Offset<flatbuffers::String>> StringArray;
+	for(int i = 0; i < ArrayHelper.Num(); i++)
+	{
+		if(auto ElementPtr = ArrayHelper.GetRawPtr(i))
+		{
+			FString val = (*(FText*)ElementPtr).ToString();
+			char* result = TCHAR_TO_ANSI(*val);
+			auto offset = fb.CreateString(result);
+			StringArray.push_back(offset);
+		}
+	}
+	auto offset = fb.CreateVector(StringArray).o;
+	fb.Finish(flatbuffers::Offset<flatbuffers::Vector<nos::fb::Track>>(offset));
+	return true;
+}
+
+void NOSTextProperty::SetArrayPropValues(void* val, size_t size, FScriptArrayHelper_InContainer& ArrayHelper)
+{
+	auto vec = (flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>*)val; 
+	int ct = vec->size();
+	ArrayHelper.Resize(ct);
+	for(int i = 0; i < ct; i++)
+	{
+		ArrayHelper.ExpandForIndex(i);
+		auto string = vec->Get(i);
+		FString newString(string->c_str());
+		FText* Text = (FText*)ArrayHelper.GetRawPtr(i);
+		*Text = FText::FromString(newString);
+	}
+}
+
 flatbuffers::Offset<nos::fb::Visualizer> NOSEnumProperty::SerializeVisualizer(flatbuffers::FlatBufferBuilder& fbb)
 {
 	return nos::fb::CreateVisualizerDirect(fbb, nos::fb::VisualizerType::COMBO_BOX, TCHAR_TO_UTF8(*Enum->GetFName().ToString()));
@@ -957,7 +1221,7 @@ void NOSEnumProperty::SetPropValue_Internal(void* val, size_t size, uint8* custo
 			}
 		}
 	}
-
+	
 	MarkState();
 
 	return;
@@ -1004,6 +1268,27 @@ std::vector<uint8> NOSEnumProperty::UpdatePinValue(uint8* customContainer)
 	return data;
 }
 
+bool IsArrayPropertySupported(FArrayProperty* ArrayProperty)
+{
+	auto InnerProperty = ArrayProperty->Inner;
+	if(CastField<FNumericProperty>(InnerProperty))
+		return true;
+	if(CastField<FStrProperty>(InnerProperty) || CastField<FTextProperty>(InnerProperty))
+		return true;
+	if (FStructProperty* structprop = CastField<FStructProperty>(InnerProperty))
+	{
+		if (structprop->Struct == FNOSTrack::StaticStruct() ||
+			structprop->Struct == TBaseStructure<FVector2D>::Get() ||
+			structprop->Struct == TBaseStructure<FVector>::Get() ||
+			structprop->Struct == TBaseStructure<FVector4>::Get() ||
+			structprop->Struct == TBaseStructure<FLinearColor>::Get() ||
+			structprop->Struct == TBaseStructure<FNOSTrack>::Get() ||
+			structprop->Struct == TBaseStructure<FColor>::Get())
+			return true;
+	}
+	
+	return false;
+}
 
 
 TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
@@ -1016,6 +1301,7 @@ TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
 
 	//CAST THE PROPERTY ACCORDINGLY
 	uproperty->GetClass();
+	
 	if(CastField<FNumericProperty>(uproperty) && CastField<FNumericProperty>(uproperty)->IsEnum())
 	{
 		FNumericProperty* numericprop = CastField<FNumericProperty>(uproperty);
@@ -1092,6 +1378,16 @@ TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
 		}
 		prop = TSharedPtr<NOSProperty>(new NOSObjectProperty(container, objectprop, parentCategory, StructPtr, parentProperty));
 	}
+	else if (FArrayProperty* arrayprop = CastField<FArrayProperty>(uproperty))
+	{
+		if(container)
+		{
+			if(IsArrayPropertySupported(arrayprop))
+			{
+				prop = TSharedPtr<NOSProperty>(new NOSArrayProperty(container, arrayprop, arrayprop->Inner, parentCategory, StructPtr, parentProperty));
+			}
+		}
+	}
 	else if (FStructProperty* structprop = CastField<FStructProperty>(uproperty))
 	{
 		//TODO ADD SUPPORT FOR FTRANSFORM
@@ -1122,6 +1418,10 @@ TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
 		else if (structprop->Struct == TBaseStructure<FTransform>::Get()) //track
 		{
 			prop = TSharedPtr<NOSProperty>(new NOSTransformProperty(container, structprop, parentCategory, StructPtr, parentProperty));
+		}
+		else if (structprop->Struct == TBaseStructure<FColor>::Get()) //track
+		{
+			prop = TSharedPtr<NOSProperty>(new NOSColorProperty(container, structprop, parentCategory, StructPtr, parentProperty));
 		}
 		else //auto construct
 		{

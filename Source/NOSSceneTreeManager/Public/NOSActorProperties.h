@@ -128,7 +128,10 @@ public:
 	void MarkState();
 	virtual flatbuffers::Offset<nos::fb::Pin> Serialize(flatbuffers::FlatBufferBuilder& fbb);
 	std::vector<flatbuffers::Offset<nos::fb::MetaDataEntry>> SerializeMetaData(flatbuffers::FlatBufferBuilder& fbb);
-	virtual flatbuffers::Offset<nos::fb::Visualizer> SerializeVisualizer(flatbuffers::FlatBufferBuilder& fbb) {return 0;};
+	virtual flatbuffers::Offset<nos::fb::Visualizer> SerializeVisualizer(flatbuffers::FlatBufferBuilder& fbb) {return 0;}
+	
+	virtual bool CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScriptArrayHelper_InContainer& ArrayHelper) {return false;}
+	virtual void SetArrayPropValues(void* val, size_t size, FScriptArrayHelper_InContainer& ArrayHelper) {}
 	
 	FProperty* Property;
 
@@ -201,6 +204,34 @@ public:
 		}
 
 		return data;
+	}
+
+	virtual bool CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScriptArrayHelper_InContainer& ArrayHelper) override
+	{
+		fb.StartVector(ArrayHelper.Num(), sizeof(CppType), 1);
+		for(int i = ArrayHelper.Num()-1; i >= 0; i--)
+		{
+			if(auto ElementPtr = ArrayHelper.GetRawPtr(i))
+			{
+				fb.PushBytes((uint8_t*)ElementPtr, sizeof(CppType));
+			}
+		}
+		auto offset = fb.EndVector(ArrayHelper.Num());
+		fb.Finish(flatbuffers::Offset<flatbuffers::Vector<uint8_t>>(offset));
+		return true;
+	}
+
+	virtual void SetArrayPropValues(void* val, size_t size, FScriptArrayHelper_InContainer& ArrayHelper) override
+	{
+		auto vec = (flatbuffers::Vector<u8>*)val; 
+		int ct = vec->size();
+		ArrayHelper.Resize(ct);
+		for(int i = 0; i < ct; i++)
+		{
+			ArrayHelper.ExpandForIndex(i);
+			uint8_t* el = vec->data() + (i * Property->ElementSize);
+			Property->SetPropertyValue(ArrayHelper.GetRawPtr(i), (*(CppType*)el));
+		}
 	}
 
 protected:
@@ -283,6 +314,8 @@ public:
 	virtual void SetPropValue_Internal(void* val, size_t size, uint8* customContainer = nullptr) override;
 	virtual std::vector<uint8> UpdatePinValue(uint8* customContainer = nullptr) override;
 
+	virtual bool CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScriptArrayHelper_InContainer& ArrayHelper) override;
+	virtual void SetArrayPropValues(void* val, size_t size, FScriptArrayHelper_InContainer& ArrayHelper) override;
 };
 
 class NOSNameProperty : public NOSProperty
@@ -298,7 +331,6 @@ public:
 	FNameProperty* nameprop;
 	virtual void SetPropValue_Internal(void* val, size_t size, uint8* customContainer = nullptr) override;
 	virtual std::vector<uint8> UpdatePinValue(uint8* customContainer = nullptr) override;
-
 };
 
 class NOSStringProperty : public NOSProperty
@@ -314,6 +346,9 @@ public:
 	FStrProperty* stringprop;
 	virtual void SetPropValue_Internal(void* val, size_t size, uint8* customContainer = nullptr) override;
 	virtual std::vector<uint8> UpdatePinValue(uint8* customContainer = nullptr) override;
+
+	virtual bool CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScriptArrayHelper_InContainer& ArrayHelper) override;
+	virtual void SetArrayPropValues(void* val, size_t size, FScriptArrayHelper_InContainer& ArrayHelper) override;
 
 };
 
@@ -339,6 +374,19 @@ public:
 	virtual std::vector<uint8> UpdatePinValue(uint8* customContainer = nullptr) override { return std::vector<uint8>(); }
 };
 
+
+class NOSArrayProperty : public NOSProperty
+{
+public:
+	NOSArrayProperty(UObject* container, FArrayProperty* ArrayProperty, FProperty* InnerProperty, FString parentCategory = FString(), uint8* StructPtr = nullptr, NOSStructProperty* parentProperty = nullptr);
+	
+	FArrayProperty* ArrayProperty;
+	FProperty* InnerProperty;
+	
+	virtual void SetPropValue_Internal(void* val, size_t size, uint8* customContainer = nullptr) override;
+	virtual std::vector<uint8> UpdatePinValue(uint8* customContainer = nullptr) override;
+};
+
 template<typename T, nos::tmp::StrLiteral LitType>
 class NOSCustomStructProperty : public NOSProperty 
 {
@@ -351,11 +399,42 @@ public:
 	}
 
 	FStructProperty* structprop;
+
+	virtual bool CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScriptArrayHelper_InContainer& ArrayHelper) override
+	{
+		fb.StartVector(ArrayHelper.Num(), sizeof(T), 1);
+		for(int i = ArrayHelper.Num()-1; i >= 0; i--)
+		{
+			if(auto ElementPtr = ArrayHelper.GetRawPtr(i))
+			{
+				fb.PushBytes((uint8_t*)ElementPtr, sizeof(T));
+			}
+		}
+		auto offset = fb.EndVector(ArrayHelper.Num());
+		fb.Finish(flatbuffers::Offset<flatbuffers::Vector<uint8_t>>(offset));
+		return true;
+	}
+
+	virtual void SetArrayPropValues(void* val, size_t size, FScriptArrayHelper_InContainer& ArrayHelper) override
+	{
+		auto vec = (flatbuffers::Vector<u8>*)val; 
+		int ct = vec->size();
+		ArrayHelper.Resize(ct);
+		for(int i = 0; i < ct; i++)
+		{
+			ArrayHelper.ExpandForIndex(i);
+			uint8_t* el = vec->data() + (i * Property->ElementSize);
+			structprop->CopyCompleteValue(ArrayHelper.GetRawPtr(i), (T*)el);
+		}
+	}
+
+
 protected:
 	virtual void SetProperty_InCont(void* container, void* val) override 
 	{
 		structprop->CopyCompleteValue(structprop->ContainerPtrToValuePtr<void>(container), (T*)val);
 	}
+	
 };
 
 using NOSVec2Property = NOSCustomStructProperty<FVector2D, "nos.fb.vec2d">;
@@ -375,6 +454,28 @@ public:
 	virtual std::vector<uint8> UpdatePinValue(uint8* customContainer = nullptr) override;
 
 	FStructProperty* structprop;
+	
+protected:
+	virtual void SetProperty_InCont(void* container, void* val) override;
+};
+
+
+class NOSColorProperty : public NOSProperty
+{
+public:
+	NOSColorProperty(UObject* container, FStructProperty* uproperty, FString parentCategory = FString(), uint8* StructPtr = nullptr, NOSStructProperty* parentProperty = nullptr)
+		: NOSProperty(container, uproperty, parentCategory, StructPtr, parentProperty), structprop(uproperty)
+	{
+		data = std::vector<uint8_t>(sizeof(FColor), 0);
+		TypeName = "nos.fb.vec4u8";
+	}
+	virtual std::vector<uint8> UpdatePinValue(uint8* customContainer = nullptr) override;
+
+	FStructProperty* structprop;
+
+	virtual bool CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScriptArrayHelper_InContainer& ArrayHelper) override;
+	virtual void SetArrayPropValues(void* val, size_t size, FScriptArrayHelper_InContainer& ArrayHelper) override;
+	
 protected:
 	virtual void SetProperty_InCont(void* container, void* val) override;
 };
@@ -397,6 +498,10 @@ public:
 	virtual void SetPropValue_Internal(void* val, size_t size, uint8* customContainer = nullptr) override;
 
 	FStructProperty* structprop;
+
+	virtual bool CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScriptArrayHelper_InContainer& ArrayHelper) override;
+	virtual void SetArrayPropValues(void* val, size_t size, FScriptArrayHelper_InContainer& ArrayHelper) override;
+	
 protected:
 	virtual void SetProperty_InCont(void* container, void* val) override;
 };
